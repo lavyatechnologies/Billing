@@ -258,7 +258,7 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ? `https://billing-nku4.onrender.com:${PORT}/uploads/${product.ImageName}` 
-        // `http://localhost:${PORT}/uploads/${product.ImageName}` 
+       
         : null
     }));
 
