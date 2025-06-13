@@ -26,7 +26,7 @@ app.use("/uploads", express.static("uploads")); // Serve uploaded images
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
- port: process.env.DB_PORT,
+ //port: process.env.DB_PORT,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
@@ -74,6 +74,7 @@ app.post("/productSave", upload.single("image"), async (req, res) => {
       FLoginId ,
       Barcode,
       Tax,
+      Points,
     } = req.body;
 
 console.log("value",req.body)
@@ -116,11 +117,12 @@ console.log("value",req.body)
       parseInt(FLoginId),
      Barcode,
     Tax,
+    Points,
     ];
 console.log("parms",params)
     // Call stored procedure
     const [results] = await connection.query(
-      'CALL insertProduct(?, ?, ?, ?, ?, ?, ? )', 
+      'CALL insertProduct(?, ?, ?, ?, ?, ?, ? ,?)', 
       params
     );
 
@@ -255,7 +257,8 @@ app.get("/showproducts", async (req, res) => {
     const products = rows[0].map((product) => ({
       ...product,
       imageUrl: product.ImageName 
-        ? `http://localhost:${PORT}/uploads/${product.ImageName}` 
+        ? `https://billing-nku4.onrender.com:${PORT}/uploads/${product.ImageName}` 
+        // `http://localhost:${PORT}/uploads/${product.ImageName}` 
         : null
     }));
 
@@ -393,7 +396,7 @@ app.delete("/deleteproduct/:id", async (req, res) => {
 // Update Product API
 app.put("/product/:id", upload.single("image"), async (req, res) => {
   try {
-    const {mrp,price, FLoginId,Barcode,Tax } = req.body;
+    const {mrp,price, FLoginId,Barcode,Tax,Points } = req.body;
     const { id } = req.params;
 
     // Validate required fields
@@ -423,8 +426,8 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
 
     // Execute the stored procedure - REMOVED productName parameter
     const [results] = await pool.query(
-      'CALL updateProduct(?, ?, ?, ?, ?,?,?)', 
-      [id, mrp, price, imageName, FLoginId, Barcode, Tax]
+      'CALL updateProduct(?, ?, ?, ?, ?,?,?,?)', 
+      [id, mrp, price, imageName, FLoginId, Barcode, Tax,Points]
     );
 
     // Process the results
@@ -618,6 +621,181 @@ app.post("/BillSave", async (req, res) => {
 });
 
 
+
+app.post("/Points", async (req, res) => {
+  console.log("Request body:", req.body);  
+
+  const { fLoginID,BillNumber,Points,fLedgerID } = req.body;
+  // Validate required fields
+  const requiredFields = [BillNumber,fLoginID];
+  if (requiredFields.some(field => field == null)) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+
+     const getIndiaDateTime = () => {
+      const now = new Date();
+      // Create a formatter for India's time zone
+      const formatter = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      // Format the date
+      const parts = formatter.formatToParts(now);
+      // Construct the date string in the format you specified
+      const BillDate = `${parts.find(p => p.type === 'year').value}-${
+        parts.find(p => p.type === 'month').value}-${
+        parts.find(p => p.type === 'day').value} ${
+        parts.find(p => p.type === 'hour').value}:${
+        parts.find(p => p.type === 'minute').value}:${
+        parts.find(p => p.type === 'second').value}`;
+    
+      return BillDate;
+    };
+    
+    // Example usage
+    const BillDate = getIndiaDateTime();
+    const connection = await pool.getConnection()
+
+    const sql = "CALL InsertPoints(?, ?, ?, ?,?)";
+    const [results] = await connection.query(sql, [
+      BillDate,BillNumber,Points,fLoginID,fLedgerID,
+    ]);
+
+    connection.release();
+
+    res.status(201).json({
+      message: "Bill data saved successfully" 
+    });
+
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ message: "Failed to save bill data", error: error.message });
+  }
+});
+
+
+app.get("/getCustomerPoints", async (req, res) => {
+  try {
+    const userId = req.query.userId;
+
+    const query = "CALL getCustomerPoints(?)";
+    const [rows] = await pool.query(query, [userId]);
+
+    const data = rows[0]; // ✅ extract only the actual data rows
+
+    if (!Array.isArray(data)) {
+      console.warn("Query result is not an array, returning empty array");
+      return res.json([]);
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error fetching Points:", error);
+    res.status(500).json([]);
+  }
+});
+
+
+
+app.get("/getCustomerPointView", async (req, res) => {
+  try {
+    const { fLoginID, fLedgerID} = req.query;
+
+    const query = "CALL getCustomerPointView(?, ?)";
+    const [rows] = await pool.query(query, [fLoginID, fLedgerID]);
+
+    const data = rows[0];
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error fetching point details:", error);
+    res.status(500).json([]);
+  }
+});
+
+
+app.get("/getPointsEarned", async (req, res) => {
+  try {
+    const { fLoginID, fLedgerID} = req.query;
+
+    const query = "CALL getPointsEarned(?, ?)";
+    const [rows] = await pool.query(query, [fLoginID, fLedgerID]);
+
+    const data = rows[0];
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error fetching point details:", error);
+    res.status(500).json([]);
+  }
+});
+
+app.post("/getEarnedPoints", async (req, res) => {
+  console.log("Request body:", req.body);  
+
+  const { fLoginID,Points,fLedgerID } = req.body;
+  // Validate required fields
+  const requiredFields = [fLoginID];
+  if (requiredFields.some(field => field == null)) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+
+     const getIndiaDateTime = () => {
+      const now = new Date();
+      // Create a formatter for India's time zone
+      const formatter = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+      // Format the date
+      const parts = formatter.formatToParts(now);
+      // Construct the date string in the format you specified
+      const BillDate = `${parts.find(p => p.type === 'year').value}-${
+        parts.find(p => p.type === 'month').value}-${
+        parts.find(p => p.type === 'day').value} ${
+        parts.find(p => p.type === 'hour').value}:${
+        parts.find(p => p.type === 'minute').value}:${
+        parts.find(p => p.type === 'second').value}`;
+    
+      return BillDate;
+    };
+    
+    // Example usage
+    const BillDate = getIndiaDateTime();
+    const connection = await pool.getConnection()
+
+    const sql = "CALL getEarnedPoints(?, ?, ?, ?)";
+    const [results] = await connection.query(sql, [
+      BillDate,Points,fLedgerID,fLoginID,
+    ]);
+
+    connection.release();
+
+    res.status(201).json({
+      message: "Ponits Earned successfully" 
+    });
+
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ message: "Failed to Ponits Earned", error: error.message });
+  }
+});
+
+
 // app.post("/productdata", async (req, res) => {
 //   const {ProductName,MRP, Price, Qty, Total, Customer, Phone,fProductID ,fLoginId} = req.body;
 
@@ -732,7 +910,27 @@ app.post("/BillSave", async (req, res) => {
 //   }
 // });
 
+app.get("/getSingleCustomerPoints", async (req, res) => {  // Fixed typo in route name
+  try {
+    const { fLoginID, fLedgerID } = req.query;
 
+    // Add validation
+    if (!fLoginID || !fLedgerID) {
+      return res.status(400).json({ 
+        error: "fLoginID and fLedgerID are required" 
+      });
+    }
+
+    const query = "CALL getSingleCusomterPoints(?, ?)";  // Fixed procedure name
+    const [rows] = await pool.query(query, [fLoginID, fLedgerID]);
+
+    const data = rows[0];
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error fetching point details:", error);
+    res.status(500).json({ error: "Failed to fetch customer points" });
+  }
+});
 
 app.get("/getBillNumber", async (req, res) => {
   try {
@@ -1206,52 +1404,94 @@ app.get("/allCustomers", async (req, res) => {
 //   INSERT INTO logins (PhoneNumber, Password, IsEnable, ValidityDate)
 // VALUES (123456789, '123456', true, '2025-03-18');
 // Backend API endpoint correction
-app.put("/update", async (req, res) => {
-  console.log("Request body:", req.body);
+// app.put("/update", async (req, res) => {
+//   console.log("Request body:", req.body);
   
+//   const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat } = req.body;
+
+//   // Validate required fields
+//   if (!LoginID || !BusinessName) {
+//     return res.status(400).json({ 
+//       success: false,
+//       message: "LoginID and BusinessName are required" 
+//     });
+//   }
+
+//   try {
+//     const connection = await pool.getConnection();
+    
+//     // Fixed SQL parameter order to match the parameter array
+//     const sql = "UPDATE login SET BusinessName = ?, Address = ?, GSTIN = ?, BillMobile = ?, BillFormat = ? WHERE LoginID = ?";
+
+//     const [result] = await connection.query(sql, [
+//       BusinessName,
+//       Address || null,        
+//       GSTIN || null,  
+//       BillMobile || null,   
+//       BillFormat || null, 
+//       LoginID
+//     ]);
+
+//     connection.release();
+
+//     console.log("Update result:", result);
+
+//     if (result.affectedRows === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found or no changes made"
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Profile updated successfully",
+//       affectedRows: result.affectedRows
+//     });
+//   } catch (error) {
+//     console.error("Database error:", error);
+//     res.status(500).json({ 
+//       success: false,
+//       message: "Failed to update profile", 
+//       error: error.message 
+//     });
+//   }
+// });
+app.put("/update", async (req, res) => {
   const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat } = req.body;
 
-  // Validate required fields
   if (!LoginID || !BusinessName) {
     return res.status(400).json({ 
       success: false,
       message: "LoginID and BusinessName are required" 
     });
   }
-
+  
   try {
     const connection = await pool.getConnection();
-    
-    // Fixed SQL parameter order to match the parameter array
-    const sql = "UPDATE login SET BusinessName = ?, Address = ?, GSTIN = ?, BillMobile = ?, BillFormat = ? WHERE LoginID = ?";
 
-    const [result] = await connection.query(sql, [
-      BusinessName,
-      Address || null,        
-      GSTIN || null,  
-      BillMobile || null,   
-      BillFormat || null, 
-      LoginID
-    ]);
+    const [result] = await connection.query(
+      "CALL UpdateFirm(?, ?, ?, ?, ?, ?)",
+      [
+        LoginID,
+        BusinessName,
+        Address,
+        GSTIN,
+        BillMobile,
+        BillFormat
+      ]
+    );
 
     connection.release();
-
-    console.log("Update result:", result);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found or no changes made"
-      });
-    }
 
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      affectedRows: result.affectedRows
+      data: result // Include result data if needed
     });
+
   } catch (error) {
-    console.error("Database error:", error);
+    console.error("Stored procedure error:", error);
     res.status(500).json({ 
       success: false,
       message: "Failed to update profile", 
@@ -1259,6 +1499,208 @@ app.put("/update", async (req, res) => {
     });
   }
 });
+
+
+
+
+
+
+
+
+//admin controller
+app.post("/AdminLogin", async (req, res) => {
+  const {
+    password,
+    phoneNumber,
+    businessName,
+    Address,
+    GSTIN,
+    BillMobile,
+    IsEnable,
+    ValidityDate,
+    BillFormat,
+    EnableStaff,
+    EnableWhatsApp,
+    WhatsAppAPI,
+    EnablePoints
+  } = req.body;
+console.log("Request body:", req.body);
+  // Validate required fields
+  if (!password || !phoneNumber || !businessName || !BillFormat) {
+    return res.status(400).json({
+      success: false,
+      message: "Password, phoneNumber, and businessName are required"
+    });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)";
+
+    const [rows] = await connection.query(sql, [
+      businessName,
+      phoneNumber,
+      password,
+      IsEnable,
+      ValidityDate,
+      Address,
+      BillMobile,
+      EnableStaff,
+      BillFormat,
+      GSTIN,
+      EnableWhatsApp,
+      WhatsAppAPI,
+      EnablePoints
+    ]);
+
+    connection.release();
+
+    res.status(201).json({
+      success: true,
+      message: "Created successfully"
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create account",
+      error: error.message
+    });
+  }
+});
+
+
+//admin gets to users
+app.get("/getUser", async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL getUser()";
+    const [rows] = await connection.query(sql); // No parameters passed
+
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      data: rows[0], // rows[0] contains the result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve logins",
+      error: error.message,
+    });
+  }
+});
+
+
+//update Users
+app.post("/updateUser", async (req, res) => {
+  const {
+    LoginID,
+    businessName,
+    phoneNumber,
+    password,
+    IsEnable,
+    ValidityDate,
+    Address,
+    BillMobile,
+    EnableStaff,
+    BillFormat,
+    GSTIN,
+    EnableWhatsApp,
+    WhatsAppAPI,
+    EnablePoints
+
+  } = req.body;
+
+  // Basic validation
+  if (!LoginID) {
+    return res.status(400).json({
+      success: false,
+      message: "LoginID is required",
+    });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)";
+    const params = [
+      LoginID,
+      businessName,
+      phoneNumber,
+      password,
+      IsEnable,
+      ValidityDate,
+      Address,
+      BillMobile,
+      EnableStaff,
+      BillFormat,
+      GSTIN,
+    EnableWhatsApp,
+    WhatsAppAPI,
+    EnablePoints
+    ];
+
+    await connection.query(sql, params);
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update user",
+      error: error.message,
+    });
+  }
+});
+
+// DELETE endpoint to call DeleteUser stored procedure
+app.delete('/DeleteUser', async (req, res) => {
+  try {
+    const { LoginID } = req.body;
+
+    // Validate input
+    if (!LoginID) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required parameter: LoginID"
+      });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      // Call stored procedure
+      await conn.query('CALL DeleteUser(?)', [LoginID]);
+
+      res.json({
+        success: true,
+        message: `User with LoginID ${LoginID} deleted successfully`
+      });
+    } finally {
+      conn.release(); // Always release connection back to pool
+    }
+
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal Server Error'
+    });
+  }
+});
+
+
+
+
+
 
 app.post("/signup", async (req, res) => {
   const { password, phoneNumber, businessName,Address,GSTIN,BillMobile,BillFormat } = req.body;
@@ -1564,127 +2006,6 @@ app.get("/login", async (req, res) => {
 });
 
 
-
-//   const { phoneNumber, password } = req.body;
-
-//   if (!phoneNumber || !password) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "Phone number and password are required.",
-//     });
-//   }
-
-//   try {
-//     const [results] = await pool.query("CALL checkLogin(?, ?)", [phoneNumber, password]);
-
-//     if (results && results[0] && results[0][0]) {
-//       const user = results[0][0];
-
-//       if (parseInt(user.userId) > 0) {
-//         return res.status(200).json({
-//           success: true,
-//           message: "Login successful",
-//           data: user,
-//         });
-//       } else {
-//         return res.status(401).json({
-//           success: false,
-//           message: "Invalid phone number or password",
-//         });
-//       }
-//     } else {
-//       return res.status(401).json({
-//         success: false,
-//         message: "Invalid login credentials",
-//       });
-//     }
-//   } catch (error) {
-//     console.error("Login Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Internal server error",
-//       error: error.message,
-//     });
-//   }
-// });
-//end
-// app.post("/api/login", async (req, res) => {
-//   const { phoneNumber, password } = req.body;
-
-//   if (!phoneNumber || !password) {
-
-//     return res.status(400).json({
-//       success: false,
-//       message: "Phone number and password are required",
-//     });
-//   }
-
-//   try {
-//     // Query database for user
-//     const [results] = await pool.query(
-//       "SELECT * FROM `login` WHERE PhoneNumber = ?",
-      
-//       [phoneNumber]
-//     );
-
-//     if (results.length === 0) {
-//       return res.status(401).json({
-//         success: false,
-//         message: "Invalid phone number or password",
-//       });
-//     }
-
-//     const user = results[0];
-
-//     // In a production app, you should compare hashed passwords
-//     // This is just temporarily keeping your existing logic
-//     if (user.Password !== password) {
-//       return res.status(401).json({
-//         success: false,
-//         message: "Invalid phone number or password",
-//       });
-//     }
-
-//     // Check if account is enabled
-//     if (user.IsEnable !== 1) {
-//       return res.status(403).json({
-//         success: false,
-//         message: "Account is disabled. Please contact support.",
-//       });
-//     }
-
-//     // Check if account has expired - FIXED LOGIC HERE
-//     const currentDate = new Date();
-//     const validityDate = new Date(user.ValidityDate);
-
-//     if (currentDate > validityDate) {
-//       return res.status(403).json({
-//         success: false,
-//         message: "Account has expired. Please renew your subscription.",
-//       });
-//     }
-
-//     // User is valid, remove password before sending response
-//     delete user.Password;
-
-//     return res.status(200).json({
-//       success: true,
-//       id: user._id,
-//       message: "Login successful",
-//       user,
-//     });
-//   } catch (error) {
-//     console.error("❌ Database error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Database error. Please try again.",
-//       // In production, don't expose the actual error
-//     });
-//   }
-// });
-// Start the Server
-
-//insertpurchase
 
 app.post("/insertpurchase", async (req, res) => {
   console.log("Request body:", req.body);
