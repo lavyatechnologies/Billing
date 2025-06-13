@@ -257,7 +257,7 @@ app.get("/showproducts", async (req, res) => {
     const products = rows[0].map((product) => ({
       ...product,
       imageUrl: product.ImageName 
-        ? `https://billing-nku4.onrender.com:${PORT}/uploads/${product.ImageName}` 
+        ? `https://billing-nku4.onrender.com:${port}/uploads/${product.ImageName}` 
        
         : null
     }));
