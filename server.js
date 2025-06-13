@@ -8,7 +8,7 @@ const path = require("path");
 const fs = require("fs");
 
 const app = express();
-const PORT = process.env.PORT ;
+const PORT = process.env.DB_PORT ;
 
 // ✅ Ensure 'uploads' folder exists
 const uploadDir = path.join(__dirname, "uploads");
@@ -257,7 +257,7 @@ app.get("/showproducts", async (req, res) => {
     const products = rows[0].map((product) => ({
       ...product,
       imageUrl: product.ImageName 
-        ? `https://billing-nku4.onrender.com:${port}/uploads/${product.ImageName}` 
+        ? `https://billing-nku4.onrender.com:${PORT}/uploads/${product.ImageName}` 
        
         : null
     }));
