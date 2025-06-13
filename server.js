@@ -6,7 +6,7 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-
+const BASE_URL = `https://billing-nku4.onrender.com`;
 const app = express();
 const PORT = process.env.DB_PORT ;
 
@@ -257,7 +257,7 @@ app.get("/showproducts", async (req, res) => {
     const products = rows[0].map((product) => ({
       ...product,
       imageUrl: product.ImageName 
-        ? `https://billing-nku4.onrender.com:${PORT}/uploads/${product.ImageName}` 
+        ? `${BASE_URL}/uploads/${product.ImageName}` 
        
         : null
     }));
