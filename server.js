@@ -98,7 +98,7 @@ console.log("value",req.body)
       console.log("Using default image:", imageName);
     } else {
       // Fallback default image
-      imageName = "1742551986076.png";
+      imageName = "no-image-icon-4.png";
       console.log("Using fallback default image:", imageName);
     }
 
