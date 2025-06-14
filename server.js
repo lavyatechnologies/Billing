@@ -19,7 +19,7 @@ console.log("🌐 BASE_URL:", BASE_URL);
 
 // ✅ Directory setup
 const uploadDir = path.join(__dirname, "uploads");
-const assetsDir = path.join(__dirname, "public", "assets");
+const assetsDir = path.join(__dirname, "uploads");
 
 // Ensure directories exist
 if (!fs.existsSync(uploadDir)) {
@@ -39,7 +39,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // ✅ Static file serving
 app.use("/uploads", express.static("uploads"));
-app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Database Connection Pool
 const pool = mysql.createPool({
