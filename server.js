@@ -61,48 +61,6 @@ app.get("/test", async function (req, res) {
   });
 });
 
-// Debug endpoint add करें
-app.get("/debug/files", (req, res) => {
-  try {
-    const uploadFiles = fs.readdirSync(uploadDir);
-    const defaultImagePath = path.join(uploadDir, "no-image-icon-4.png");
-    
-    res.json({
-      uploadDir: uploadDir,
-      filesInUploadDir: uploadFiles,
-      defaultImageExists: fs.existsSync(defaultImagePath),
-      defaultImagePath: defaultImagePath,
-      BASE_URL: BASE_URL
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-
-
-// Step 4a: Public assets folder structure बनाएं
-const assetsDir = path.join(__dirname, "public", "assets");
-const uploadDir = path.join(__dirname, "uploads");
-
-// Step 4b: Folders ensure करें
-if (!fs.existsSync(assetsDir)) {
-  fs.mkdirSync(assetsDir, { recursive: true });
-  console.log("✅ Assets directory created");
-}
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("✅ Uploads directory created");
-}
-
-// Step 4c: Static serving setup करें
-app.use("/uploads", express.static("uploads"));
-app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
-
-
-
-
 //save products
 app.post("/productSave", upload.single("image"), async (req, res) => {
   let connection;
@@ -238,6 +196,68 @@ console.log("parms",params)
     }
   } 
 });
+
+
+
+
+// Debug endpoint add करें
+app.get("/debug/files", (req, res) => {
+  try {
+    const uploadFiles = fs.readdirSync(uploadDir);
+    const defaultImagePath = path.join(uploadDir, "no-image-icon-4.png");
+    
+    res.json({
+      uploadDir: uploadDir,
+      filesInUploadDir: uploadFiles,
+      defaultImageExists: fs.existsSync(defaultImagePath),
+      defaultImagePath: defaultImagePath,
+      BASE_URL: BASE_URL
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Step 4a: Public assets folder structure बनाएं
+const assetsDir = path.join(__dirname, "public", "assets");
+
+
+// Step 4b: Folders ensure करें
+if (!fs.existsSync(assetsDir)) {
+  fs.mkdirSync(assetsDir, { recursive: true });
+  console.log("✅ Assets directory created");
+}
+
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("✅ Uploads directory created");
+}
+
+// Step 4c: Static serving setup करें
+app.use("/uploads", express.static("uploads"));
+app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
+
+
+// Server start पर file permissions check करें
+const checkFilePermissions = () => {
+  try {
+    const stats = fs.statSync(path.join(uploadDir, "no-image-icon-4.png"));
+    console.log("✅ Default image permissions:", stats.mode);
+  } catch (error) {
+    console.log("❌ Default image not accessible:", error.message);
+  }
+};
+
+
+
+
+
+
+
+
+
+
 // app.post("/productssave", upload.single("image"), async (req, res) => {
 //   try {
 //     const { productName, price, mrp, useDefaultImage, defaultImageName ,FLoginId } =
