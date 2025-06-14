@@ -61,6 +61,23 @@ app.get("/test", async function (req, res) {
   });
 });
 
+// Debug endpoint add करें
+app.get("/debug/files", (req, res) => {
+  try {
+    const uploadFiles = fs.readdirSync(uploadDir);
+    const defaultImagePath = path.join(uploadDir, "no-image-icon-4.png");
+    
+    res.json({
+      uploadDir: uploadDir,
+      filesInUploadDir: uploadFiles,
+      defaultImageExists: fs.existsSync(defaultImagePath),
+      defaultImagePath: defaultImagePath,
+      BASE_URL: BASE_URL
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 //save products
 app.post("/productSave", upload.single("image"), async (req, res) => {
   let connection;
