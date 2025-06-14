@@ -6,27 +6,45 @@ const bodyParser = require("body-parser");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const BASE_URL = `https://billing-nku4.onrender.com`;
-const app = express();
-const PORT = process.env.DB_PORT ;
 
-// ✅ Ensure 'uploads' folder exists
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// ✅ BASE_URL Configuration
+const BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://billing-nku4.onrender.com' 
+  : `http://localhost:${PORT}`;
+
+console.log("🌐 BASE_URL:", BASE_URL);
+
+// ✅ Directory setup
 const uploadDir = path.join(__dirname, "uploads");
+const assetsDir = path.join(__dirname, "public", "assets");
+
+// Ensure directories exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+  console.log("✅ Uploads directory created");
 }
 
-// ✅ Middleware (Fix: Ensure middleware is used)
+if (!fs.existsSync(assetsDir)) {
+  fs.mkdirSync(assetsDir, { recursive: true });
+  console.log("✅ Assets directory created");
+}
+
+// ✅ Middleware
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use("/uploads", express.static("uploads")); // Serve uploaded images
+
+// ✅ Static file serving
+app.use("/uploads", express.static("uploads"));
+app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
 
 // Database Connection Pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
- port: process.env.DB_PORT,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
@@ -38,30 +56,83 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Unique filename
+    cb(null, Date.now() + path.extname(file.originalname));
   },
 });
 
 const upload = multer({ storage });
+
+// ✅ Ensure default images exist
+const ensureDefaultImages = () => {
+  const defaultImageName = "no-image-icon-4.png";
+  const sourcePath = path.join(assetsDir, defaultImageName);
+  const destPath = path.join(uploadDir, defaultImageName);
+  
+  try {
+    if (fs.existsSync(sourcePath)) {
+      console.log(`✅ Default image found in assets: ${defaultImageName}`);
+      
+      // Optional: Copy to uploads as backup
+      if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(sourcePath, destPath);
+        console.log(`✅ Default image copied to uploads: ${defaultImageName}`);
+      }
+    } else {
+      console.log(`❌ Default image not found in assets: ${sourcePath}`);
+      console.log("Please ensure no-image-icon-4.png exists in public/assets/");
+    }
+  } catch (error) {
+    console.error("❌ Error handling default image:", error);
+  }
+};
+
+// Call on server start
+ensureDefaultImages();
 
 // Check Database Connection
 (async () => {
   try {
     const connection = await pool.getConnection();
     console.log("✅ Connected to MySQL database");
-    connection.release(); // Release connection back to pool
+    connection.release();
   } catch (error) {
     console.error("❌ Database connection failed:", error);
   }
 })();
 
+// ✅ Test endpoint
 app.get("/test", async function (req, res) {
   res.json({
     message: "working",
+    BASE_URL: BASE_URL,
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-//save products
+// ✅ Debug endpoint
+app.get("/debug/files", (req, res) => {
+  try {
+    const uploadFiles = fs.existsSync(uploadDir) ? fs.readdirSync(uploadDir) : [];
+    const assetFiles = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir) : [];
+    const defaultImageInUploads = fs.existsSync(path.join(uploadDir, "no-image-icon-4.png"));
+    const defaultImageInAssets = fs.existsSync(path.join(assetsDir, "no-image-icon-4.png"));
+    
+    res.json({
+      BASE_URL: BASE_URL,
+      uploadDir: uploadDir,
+      assetsDir: assetsDir,
+      filesInUploadDir: uploadFiles,
+      filesInAssetsDir: assetFiles,
+      defaultImageInUploads: defaultImageInUploads,
+      defaultImageInAssets: defaultImageInAssets,
+      environment: process.env.NODE_ENV || 'development'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ Save products
 app.post("/productSave", upload.single("image"), async (req, res) => {
   let connection;
   try {
@@ -71,15 +142,16 @@ app.post("/productSave", upload.single("image"), async (req, res) => {
       mrp, 
       useDefaultImage, 
       defaultImageName,
-      FLoginId ,
+      FLoginId,
       Barcode,
       Tax,
       Points,
     } = req.body;
 
-console.log("value",req.body)
+    console.log("Request body:", req.body);
+
     // Validate required fields
-    if (!productName || !mrp  || !price  ||!FLoginId ) {
+    if (!productName || !mrp || !price || !FLoginId) {
       return res.status(400).json({ 
         success: false, 
         message: "Product details are required" 
@@ -104,8 +176,6 @@ console.log("value",req.body)
 
     // Acquire connection from the pool
     connection = await pool.getConnection();
-
-    // Begin transaction
     await connection.beginTransaction();
 
     // Prepare parameters
@@ -115,27 +185,27 @@ console.log("value",req.body)
       parseFloat(price), 
       imageName, 
       parseInt(FLoginId),
-     Barcode,
-    Tax,
-    Points,
+      Barcode,
+      Tax,
+      Points,
     ];
-console.log("parms",params)
+
+    console.log("Parameters:", params);
+
     // Call stored procedure
     const [results] = await connection.query(
-      'CALL insertProduct(?, ?, ?, ?, ?, ?, ? ,?)', 
+      'CALL insertProduct(?, ?, ?, ?, ?, ?, ?, ?)', 
       params
     );
 
     // Commit transaction
     await connection.commit();
 
-    // Advanced result extraction
+    // Extract product ID
     let productId = null;
     let insertResult = null;
 
-    // Complex result parsing
     if (Array.isArray(results)) {
-      // Handle nested array results
       if (results[0] && Array.isArray(results[0])) {
         insertResult = results[0][0];
       } else {
@@ -144,9 +214,8 @@ console.log("parms",params)
     } else {
       insertResult = results;
     }
-    // Comprehensive ID extraction strategy
+
     const extractProductId = (result) => {
-      // Try multiple extraction methods
       const idCandidates = [
         result?.product_id,
         result?.insertId,
@@ -154,7 +223,6 @@ console.log("parms",params)
         (result && Object.values(result)[0])
       ];
 
-      // Find the first truthy value that is a number
       const extractedId = idCandidates.find(
         id => id !== null && id !== undefined && !isNaN(Number(id))
       );
@@ -162,19 +230,10 @@ console.log("parms",params)
       return extractedId !== undefined ? Number(extractedId) : null;
     };
 
-    // Extract product ID
     productId = extractProductId(insertResult);
-
     console.log("Extracted Product ID:", productId);
 
-    // Validate result with more robust checking
     if (productId === null || productId === undefined) {
-      console.error("Product ID Extraction Failed", {
-        insertResult: insertResult,
-        resultType: typeof insertResult,
-        resultKeys: insertResult ? Object.keys(insertResult) : null
-      });
-
       throw new Error("Could not retrieve valid product ID from database");
     }
 
@@ -186,7 +245,7 @@ console.log("parms",params)
     });
 
   } catch (error) {
-    // Rollback transaction if it exists
+    console.error("❌ Error saving product:", error);
     if (connection) {
       try {
         await connection.rollback();
@@ -194,137 +253,52 @@ console.log("parms",params)
         console.error("Rollback error:", rollbackError);
       }
     }
-  } 
-});
-
-
-
-
-// Debug endpoint add करें
-app.get("/debug/files", (req, res) => {
-  try {
-    const uploadFiles = fs.readdirSync(uploadDir);
-    const defaultImagePath = path.join(uploadDir, "no-image-icon-4.png");
-    
-    res.json({
-      uploadDir: uploadDir,
-      filesInUploadDir: uploadFiles,
-      defaultImageExists: fs.existsSync(defaultImagePath),
-      defaultImagePath: defaultImagePath,
-      BASE_URL: BASE_URL
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error",
+      error: error.message 
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
-
-// Step 4a: Public assets folder structure बनाएं
-const assetsDir = path.join(__dirname, "public", "assets");
-
-
-// Step 4b: Folders ensure करें
-if (!fs.existsSync(assetsDir)) {
-  fs.mkdirSync(assetsDir, { recursive: true });
-  console.log("✅ Assets directory created");
-}
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("✅ Uploads directory created");
-}
-
-// Step 4c: Static serving setup करें
-app.use("/uploads", express.static("uploads"));
-app.use("/assets", express.static(path.join(__dirname, "public", "assets")));
-
-
-// Server start पर file permissions check करें
-const checkFilePermissions = () => {
-  try {
-    const stats = fs.statSync(path.join(uploadDir, "no-image-icon-4.png"));
-    console.log("✅ Default image permissions:", stats.mode);
-  } catch (error) {
-    console.log("❌ Default image not accessible:", error.message);
-  }
-};
-
-
-
-
-
-
-
-
-
-
-// app.post("/productssave", upload.single("image"), async (req, res) => {
-//   try {
-//     const { productName, price, mrp, useDefaultImage, defaultImageName ,FLoginId } =
-//       req.body;
-//     if (!productName || !price || !mrp || !FLoginId) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Product details are required" });
-//     }
-
-//     let imageName;
-
-//     // Check if user uploaded an image or we should use default
-//     if (req.file) {
-//       // User uploaded an image, use that
-//       imageName = req.file.filename;
-//     } else if (useDefaultImage && defaultImageName) {
-//       // No image uploaded, use the default one
-//       imageName = defaultImageName;
-//     } else {
-//       // No image provided and no default specified
-//       imageName = "1742551986076.png"; // Fallback default
-//     }
-
-//     // Insert Product into MySQL
-//     const [result] = await pool.query(
-//       'insertProduct(?, ?, ?, ?,?)',
-//       [productName, price, mrp, imageName,FLoginId]
-//     );
-
-//     res
-//       .status(201)
-//       .json({
-//         success: true,
-//         message: "Product saved successfully",
-//         productId: result.insertId,
-//       });
-//   } catch (error) {
-//     console.error("❌ Error saving product:", error);
-//     res.status(500).json({ success: false, message: "Server error" });
-//   }
-// });
-
-
-//Show Procucts
+// ✅ Show products (FIXED)
 app.get("/showproducts", async (req, res) => {
   try {
     const userId = req.query.userId;
-    // console.log("User ID:", userId);
+    console.log("User ID:", userId);
 
-    // Stored procedure call
     let query = "CALL selectProduct(?)";
- 
     let params = [userId || null];
     
     const [rows] = await pool.query(query, params);
 
-    // Assuming the first result set contains the products
-    const products = rows[0].map((product) => ({
-      ...product,
-      imageUrl: product.ImageName 
-        ? `${BASE_URL}/uploads/${product.ImageName}` 
-       
-        : null
-    }));
+    // Map products with proper image URLs
+    const products = rows[0].map((product) => {
+      let imageUrl = null;
+      
+      if (product.ImageName && product.ImageName !== "no-image-icon-4.png") {
+        // User uploaded image
+        imageUrl = `${BASE_URL}/uploads/${product.ImageName}`;
+        console.log("Using uploaded image:", product.ImageName);
+      } else {
+        // Default image from assets
+        imageUrl = `${BASE_URL}/assets/no-image-icon-4.png`;
+        console.log("Using default image from assets");
+      }
+      
+      return {
+        ...product,
+        imageUrl
+      };
+    });
 
+    console.log(`✅ Returning ${products.length} products`);
     res.json(products);
+    
   } catch (error) {
     console.error("❌ Error fetching products:", error);
     res.status(500).json({ 
@@ -335,6 +309,18 @@ app.get("/showproducts", async (req, res) => {
   }
 });
 
+// ✅ Health check
+app.get("/health", (req, res) => {
+  const defaultImageExists = fs.existsSync(path.join(assetsDir, "no-image-icon-4.png"));
+  
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    BASE_URL: BASE_URL,
+    defaultImageExists: defaultImageExists,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 // app.get("/showproducts", async (req, res) => {
 //   try {
 //     const userId = req.query.userId;
@@ -2778,6 +2764,11 @@ app.get("/getStaffSale", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Base URL: ${BASE_URL}`);
+  console.log(`📁 Upload directory: ${uploadDir}`);
+  console.log(`📁 Assets directory: ${assetsDir}`);
+  console.log(`🖼️  Default image exists: ${fs.existsSync(path.join(assetsDir, "no-image-icon-4.png"))}`);
 });
 
 module.exports = app;
