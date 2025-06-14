@@ -286,7 +286,7 @@ app.get("/showproducts", async (req, res) => {
         console.log("Using uploaded image:", product.ImageName);
       } else {
         // Default image from assets
-        imageUrl = `${BASE_URL}/assets/no-image-icon-4.png`;
+        imageUrl = `${BASE_URL}/no-image-icon-4.png`;
         console.log("Using default image from assets");
       }
       
