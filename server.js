@@ -429,8 +429,7 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ?
-         `http://${BASE_URL}/uploads/${product.ImageName}`
-        // `http://localhost:${PORT}/uploads/${product.ImageName}` 
+         `${BASE_URL}/uploads/${product.ImageName}`
         : null
     }));
 
