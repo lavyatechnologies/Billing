@@ -705,79 +705,76 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
 
 //save bill items
 app.post("/BillSave", async (req, res) => {
-  console.log("Request body:", req.body);  
+  console.log("Request body:", req.body);
 
-  const { ProductName, MRP, Price, Qty, Total, Customer, Phone, fProductID, fLoginID,BillNumber,Tax,Taxable,GSTAmount, StaffName,selectedCustomerID } = req.body;
+  let {
+    ProductName, MRP, Price, Qty, Total,
+    Customer, Phone, fProductID, fLoginID,
+    BillNumber, Tax, Taxable, GSTAmount,
+    StaffName, selectedCustomerID
+  } = req.body;
+
   // Validate required fields
   const requiredFields = [ProductName, MRP, Price, Qty, Total, fLoginID, fProductID];
   if (requiredFields.some(field => field == null)) {
-    return res.status(400).json({ message: "All fields are required" });
+    return res.status(400).json({ message: "All required fields must be provided." });
   }
 
+  // ✅ Convert empty or missing selectedCustomerID to NULL
+  if (!selectedCustomerID || selectedCustomerID === '') {
+    selectedCustomerID = null;
+  }
+
+  // 🕓 Get current date & time in India format
+  const getIndiaDateTime = () => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(now);
+    return `${parts.find(p => p.type === 'year').value}-${
+      parts.find(p => p.type === 'month').value}-${
+      parts.find(p => p.type === 'day').value} ${
+      parts.find(p => p.type === 'hour').value}:${
+      parts.find(p => p.type === 'minute').value}:${
+      parts.find(p => p.type === 'second').value}`;
+  };
+
+  const BillDate = getIndiaDateTime();
+
   try {
-
-    //  const BillDate = new Date().toISOString().slice(0, 22).replace('T', ' ');  // Format as 'YYYY-MM-DD HH:MM:SS'
-    //  console.log("date",BillDate)
-     const getIndiaDateTime = () => {
-      // Create a date object for the current time
-      const now = new Date();
-      
-      // Create a formatter for India's time zone
-      const formatter = new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
-    
-      // Format the date
-      const parts = formatter.formatToParts(now);
-      
-      // Construct the date string in the format you specified
-      const BillDate = `${parts.find(p => p.type === 'year').value}-${
-        parts.find(p => p.type === 'month').value}-${
-        parts.find(p => p.type === 'day').value} ${
-        parts.find(p => p.type === 'hour').value}:${
-        parts.find(p => p.type === 'minute').value}:${
-        parts.find(p => p.type === 'second').value}`;
-    
-      return BillDate;
-    };
-    
-    // Example usage
-    const BillDate = getIndiaDateTime();
-    console.log(BillDate);
-    // const indiaTime =new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-    // const BillDate =  new Date(indiaTime).toISOString().slice(0, 19).replace('T', ' ');
-    
-    // console.log(BillDate);
-    
-
     const connection = await pool.getConnection();
 
-    // SQL query with 10 parameters
+    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)";
-    
-  
     const [results] = await connection.query(sql, [
-      BillDate, ProductName, MRP, Price, Qty, Total, Customer, Phone, fProductID, fLoginID,BillNumber,Tax,Taxable,GSTAmount, StaffName,selectedCustomerID,
+      BillDate, ProductName, MRP, Price, Qty,
+      Total, Customer, Phone, fProductID, fLoginID,
+      BillNumber, Tax, Taxable, GSTAmount, StaffName,
+      selectedCustomerID
     ]);
-       //console.log("R",results)
+
     connection.release();
 
     res.status(201).json({
-      message: "Product data saved successfully" 
+      success: true,
+      message: "Product data saved successfully"
     });
-   // console.log("1",results[0][0])
 
   } catch (error) {
     console.error("Database error:", error);
-    res.status(500).json({ message: "Failed to save product data", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to save product data",
+      error: error.message
+    });
   }
 });
 
