@@ -500,46 +500,27 @@ app.get("/showproducts", async (req, res) => {
 app.delete("/deleteproduct/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Execute the stored procedure
+
     const [results] = await pool.query('CALL deleteProduct(?)', [id]);
 
-    // Log the results to see what is returned by the stored procedure
-    console.log("Stored Procedure Results:", results);
     const processDeleteResults = (results) => {
-      // Scenario 1: Nested array result
       if (Array.isArray(results) && results[0] && results[0].length > 0) {
-        const result = results[0][0];
-        console.log("Nested Array Result:", result);
-        return result;
+        return results[0][0];
       }
-
-      // Scenario 2: Direct result object
-      if (results[0]) {
-        console.log("Direct Result:", results[0]);
-        return results[0];
-      }
-
-      // Scenario 3: Check for affected rows
       const affectedRows = results.affectedRows || 
-       (results[0] && results[0].affectedRows) || 
-      (results[0] && results[0][0] && results[0][0].affectedRows);
-      
-      console.log("Affected Rows:", affectedRows);
+        (results[0] && results[0].affectedRows) || 
+        (results[0] && results[0][0] && results[0][0].affectedRows);
       return { affectedRows };
     };
-    // Ensure results is not empty and check its structure
-    const result = processDeleteResults(results); // Assuming the stored procedure returns an array with the first element containing the result
 
+    const result = processDeleteResults(results);
     const isSuccessful = 
-    (result && result.status === 1) || 
-    (result && result.status === '1') || 
-    (result && result.affectedRows > 0);
+      (result && result.status === 1) || 
+      (result && result.status === '1') || 
+      (result && result.affectedRows > 0);
 
-  if (isSuccessful) {
-      console.log("hell")
+    if (isSuccessful) {
       res.json({ success: true, message: "Product deleted successfully" });
-      console.log("Response Sent:", res.json);
     } else {
       res.status(404).json({ 
         success: false, 
@@ -548,7 +529,16 @@ app.delete("/deleteproduct/:id", async (req, res) => {
     }
   } catch (error) {
     console.error("❌ Error deleting product:", error);
-    
+
+    if (error.code === 'ER_ROW_IS_REFERENCED_2') {
+      // Send custom error message for foreign key constraint
+      return res.status(409).json({
+        success: false,
+        message: "This product is used in a bill and cannot be deleted.",
+      });
+    }
+
+    res.status(500).json({ success: false, message: "Server error. Try again later." });
   }
 });
 
@@ -2543,9 +2533,8 @@ app.get("/getNameLIDtofID", async (req, res) => {
 //deleteledgeritems
 app.delete('/deleteledger', async (req, res) => {
   try {
-    // console.log("Delete request received:", req.body);
     const { fLoginID, LID } = req.body;
-    
+
     // Validate input
     if (!fLoginID || !LID) {
       console.log("Missing required parameters:", { fLoginID, LID });
@@ -2555,22 +2544,16 @@ app.delete('/deleteledger', async (req, res) => {
       });
     }
 
-    // console.log("Calling DeletePurchase with:", { PID, fLoginID });
-    
-    // Call stored procedure - MAKE SURE THE ORDER MATCHES YOUR PROCEDURE DEFINITION
+    // Call stored procedure
     const [results] = await pool.query(
       'CALL DeleteLedger(?, ?)',
       [LID, fLoginID]
     );
-    
-    // console.log("Stored procedure results:", JSON.stringify(results));
 
-    // Extract procedure result
-    const procedureResult = results || {};
-    // console.log("Procedure result:", procedureResult);
-    
-    // Check if deletion was successful
-    // Depending on your stored procedure, it might indicate success differently
+    // Your stored procedure might return results differently
+    // Adjust the following logic based on your procedure
+    const procedureResult = results[0] || {};
+
     if (procedureResult.status === 1 || procedureResult.affectedRows > 0) {
       return res.json({
         success: true,
@@ -2578,19 +2561,25 @@ app.delete('/deleteledger', async (req, res) => {
         affectedRows: procedureResult.affectedRows
       });
     }
-    
-    // If we reach here, it means the deletion was not successful
+
     return res.status(404).json({
       success: false,
-      error: procedureResult.error || 'Ledger deleted  unauthorized'
+      error: procedureResult.error || 'Ledger deletion unauthorized'
     });
-    
+
   } catch (error) {
     console.error("Database error:", error);
+
+    let errorMessage = "Database operation failed";
+
+    if (error.code === "ER_ROW_IS_REFERENCED_2") {
+      errorMessage = "Cannot delete ledger: it is use bill";
+    }
+
     return res.status(500).json({
       success: false,
-      error: "Database operation failed",
-      details: error.message
+      error: errorMessage,
+      details: error.message,
     });
   }
 });
