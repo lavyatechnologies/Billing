@@ -26,14 +26,45 @@ app.use("/uploads", express.static("uploads")); // Serve uploaded images
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
-  port: process.env.DB_PORT,
+//  port: process.env.DB_PORT,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
 });
 
-// ✅ Multer Storage Configuration
-const storage = multer.diskStorage({
+
+// ✅ Configure multer for image upload (LoginID-based) - FIXED VERSION
+const imageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    // Use a temporary filename first
+    const tempFilename = `temp_${Date.now()}_${file.originalname}`;
+    cb(null, tempFilename);
+  }
+});
+
+// File filter to accept only PNG files
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'image/png') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PNG files are allowed!'), false);
+  }
+};
+
+// Create multer upload middleware with configuration
+const uploadImage = multer({
+  storage: imageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: fileFilter
+});
+
+// ✅ General multer for other file uploads (if needed)
+const generalStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
@@ -42,7 +73,147 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage: generalStorage });
+
+app.post('/upload-image', uploadImage.single('image'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No file uploaded or invalid file type'
+      });
+    }
+
+    const loginID = req.body.LoginID;
+    if (!loginID) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        message: 'LoginID is required'
+      });
+    }
+
+    // Rename uploaded file to use LoginID as the filename
+    const ext = path.extname(req.file.originalname);
+    const newFilename = `${loginID}${ext}`;
+    const newFilePath = path.join(uploadDir, newFilename);
+
+    fs.renameSync(req.file.path, newFilePath);
+
+    const fileUrl = `/uploads/${newFilename}`;
+    res.status(200).json({
+      success: true,
+      message: 'Image uploaded successfully',
+      data: {
+        filename: newFilename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        url: fileUrl,
+        loginID: loginID
+      }
+    });
+
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload image',
+      error: error.message
+    });
+  }
+});
+
+// ✅ Get image by loginID
+app.get('/get-image/:loginID', (req, res) => {
+  const loginID = req.params.loginID;
+
+  // Find matching file with any image extension
+  const possibleExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+  let foundPath = null;
+
+  for (const ext of possibleExts) {
+    const imagePath = path.join(uploadDir, `${loginID}${ext}`);
+    if (fs.existsSync(imagePath)) {
+      foundPath = imagePath;
+      break;
+    }
+  }
+
+  if (foundPath) {
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
+    res.sendFile(foundPath);
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'Image not found'
+    });
+  }
+});
+
+// ✅ Delete image endpoint
+app.delete('/delete-image/:loginID', (req, res) => {
+  const loginID = req.params.loginID;
+  const imagePath = path.join(uploadDir, `${loginID}.png`);
+  
+  if (fs.existsSync(imagePath)) {
+    try {
+      fs.unlinkSync(imagePath);
+      res.json({
+        success: true,
+        message: 'Image deleted successfully'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to delete image',
+        error: error.message
+      });
+    }
+  } else {
+    res.status(404).json({
+      success: false,
+      message: 'Image not found'
+    });
+  }
+});
+
+// ✅ Error handling middleware for multer (should be before other routes)
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: 'File too large. Maximum size is 5MB.'
+      });
+    }
+  }
+  
+  if (error.message === 'Only PNG files are allowed!') {
+    return res.status(400).json({
+      success: false,
+      message: 'Only PNG files are allowed!'
+    });
+  }
+
+  if (error.message === 'LoginID is required') {
+    return res.status(400).json({
+      success: false,
+      message: 'LoginID is required'
+    });
+  }
+
+  res.status(500).json({
+    success: false,
+    message: 'Something went wrong!',
+    error: error.message
+  });
+});
+
+
 
 // Check Database Connection
 (async () => {
@@ -258,7 +429,8 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ?
-        `${BASE_URL}/uploads/${product.ImageName}` 
+         `http://${BASE_URL}/uploads/${product.ImageName}`
+        // `http://localhost:${PORT}/uploads/${product.ImageName}` 
         : null
     }));
 
@@ -1071,25 +1243,26 @@ app.delete('/deleteBill', async (req, res) => {
       });
     }
 
+    console.log("Deleting bill with params:", { fLoginID, BillNumber });
+
     const [results] = await pool.query(
       'CALL deleteBill(?, ?)',
       [fLoginID, BillNumber]
     );
 
-    const procedureResult = results[0][0] || {}; // ✅ Fix here
-    console.log("desssss", procedureResult);
-
-    if (procedureResult.status === 1 || procedureResult.affectedRows > 0) {
+    // Handle the result properly - stored procedure returns array of results
+    const procedureResult = results[0][0] || {};
+    if (procedureResult.status === 1 && procedureResult.affectedRows > 0) {
       return res.json({
         success: true,
-        message: procedureResult.message,
+        message: "Bill deleted successfully",
         affectedRows: procedureResult.affectedRows
       });
     }
 
     return res.status(404).json({
       success: false,
-      error: procedureResult.message || 'Bill not found or unauthorized'
+      error: 'Bill not found or unauthorized'
     });
 
   } catch (error) {
@@ -1457,8 +1630,16 @@ app.get("/allCustomers", async (req, res) => {
 //     });
 //   }
 // });
-app.put("/update", async (req, res) => {
-  const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat } = req.body;
+
+
+
+
+
+
+
+
+app.put("/updateFirm", async (req, res) => {
+  const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat,UPI } = req.body;
 
   if (!LoginID || !BusinessName) {
     return res.status(400).json({ 
@@ -1471,14 +1652,15 @@ app.put("/update", async (req, res) => {
     const connection = await pool.getConnection();
 
     const [result] = await connection.query(
-      "CALL UpdateFirm(?, ?, ?, ?, ?, ?)",
+      "CALL UpdateFirm(?, ?, ?, ?, ?, ?,?)",
       [
         LoginID,
         BusinessName,
         Address,
         GSTIN,
         BillMobile,
-        BillFormat
+        BillFormat,
+        UPI
       ]
     );
 
@@ -1522,7 +1704,8 @@ app.post("/AdminLogin", async (req, res) => {
     EnableStaff,
     EnableWhatsApp,
     WhatsAppAPI,
-    EnablePoints
+    EnablePoints,
+    UPI
   } = req.body;
 console.log("Request body:", req.body);
   // Validate required fields
@@ -1536,7 +1719,7 @@ console.log("Request body:", req.body);
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -1551,7 +1734,8 @@ console.log("Request body:", req.body);
       GSTIN,
       EnableWhatsApp,
       WhatsAppAPI,
-      EnablePoints
+      EnablePoints,
+      UPI
     ]);
 
     connection.release();
@@ -1612,7 +1796,8 @@ app.post("/updateUser", async (req, res) => {
     GSTIN,
     EnableWhatsApp,
     WhatsAppAPI,
-    EnablePoints
+    EnablePoints,
+    UPI,
 
   } = req.body;
 
@@ -1627,7 +1812,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -1642,7 +1827,8 @@ app.post("/updateUser", async (req, res) => {
       GSTIN,
     EnableWhatsApp,
     WhatsAppAPI,
-    EnablePoints
+    EnablePoints,
+    UPI,
     ];
 
     await connection.query(sql, params);
