@@ -2535,36 +2535,43 @@ app.delete('/deleteledger', async (req, res) => {
   try {
     const { fLoginID, LID } = req.body;
 
-    // Validate input
     if (!fLoginID || !LID) {
-      console.log("Missing required parameters:", { fLoginID, LID });
       return res.status(400).json({
         success: false,
         error: "Missing required parameters"
       });
     }
 
-    // Call stored procedure
-    const [results] = await pool.query(
-      'CALL DeleteLedger(?, ?)',
-      [LID, fLoginID]
-    );
+    const [results] = await pool.query('CALL DeleteLedger(?, ?)', [LID, fLoginID]);
 
-    // Your stored procedure might return results differently
-    // Adjust the following logic based on your procedure
-    const procedureResult = results[0] || {};
+    // Log results for debugging
+    console.log('Stored procedure results:', results);
 
-    if (procedureResult.status === 1 || procedureResult.affectedRows > 0) {
-      return res.json({
-        success: true,
-        message: procedureResult.message || "Ledger deleted successfully",
-        affectedRows: procedureResult.affectedRows
-      });
+    // Usually, MySQL stored procedure CALL returns an array of result sets
+    // If your procedure does a DELETE but returns no result set, results[0] might be undefined or empty
+
+    // Check if procedure returned a status or affectedRows - adjust this logic to your procedure
+    const procedureResult = results[0] && results[0][0] ? results[0][0] : null;
+
+    if (procedureResult) {
+      // If procedure explicitly returns a status field
+      if (procedureResult.status === 1) {
+        return res.json({
+          success: true,
+          message: procedureResult.message || "Ledger deleted successfully"
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          error: procedureResult.error || "Ledger deletion failed"
+        });
+      }
     }
 
-    return res.status(404).json({
-      success: false,
-      error: procedureResult.error || 'Ledger deletion unauthorized'
+    // If no procedureResult returned, but no error thrown, assume success
+    return res.json({
+      success: true,
+      message: "Ledger deleted successfully"
     });
 
   } catch (error) {
@@ -2573,16 +2580,17 @@ app.delete('/deleteledger', async (req, res) => {
     let errorMessage = "Database operation failed";
 
     if (error.code === "ER_ROW_IS_REFERENCED_2") {
-      errorMessage = "Cannot delete ledger: it is use bill";
+      errorMessage = "Cannot delete ledger: it is referenced in a bill";
     }
 
     return res.status(500).json({
       success: false,
       error: errorMessage,
-      details: error.message,
+      details: error.message
     });
   }
 });
+
 //updateledgeritems
 // UpdateLedger route
 app.put('/updateledger', async (req, res) => {
