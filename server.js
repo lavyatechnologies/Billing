@@ -17,7 +17,10 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // ✅ Middleware (Fix: Ensure middleware is used)
-app.use(cors());
+app.use(cors({
+  origin: ['https://cranky-davinci.216-10-253-21.plesk.page/'], // ✅ frontend deployed domain
+  credentials: true                     // ✅ if auth is involved
+}));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use("/uploads", express.static("uploads")); // Serve uploaded images
