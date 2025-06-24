@@ -20,6 +20,7 @@ if (!fs.existsSync(uploadDir)) {
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
 app.use("/uploads", express.static("uploads")); // Serve uploaded images
 
 // Database Connection Pool
@@ -429,7 +430,7 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ?
-         `${BASE_URL}/uploads/${product.ImageName}`
+        `${BASE_URL}/uploads/${product.ImageName}` 
         : null
     }));
 
@@ -711,11 +712,11 @@ app.post("/BillSave", async (req, res) => {
     ProductName, MRP, Price, Qty, Total,
     Customer, Phone, fProductID, fLoginID,
     BillNumber, Tax, Taxable, GSTAmount,
-    StaffName, selectedCustomerID
+    StaffName, selectedCustomerID,PointsParsent
   } = req.body;
 
   // Validate required fields
-  const requiredFields = [ProductName, MRP, Price, Qty, Total, fLoginID, fProductID];
+  const requiredFields = [ProductName, MRP, Price, Qty, Total, fLoginID, fProductID, PointsParsent];
   if (requiredFields.some(field => field == null)) {
     return res.status(400).json({ message: "All required fields must be provided." });
   }
@@ -752,13 +753,13 @@ app.post("/BillSave", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)";
 
     const [results] = await connection.query(sql, [
       BillDate, ProductName, MRP, Price, Qty,
       Total, Customer, Phone, fProductID, fLoginID,
       BillNumber, Tax, Taxable, GSTAmount, StaffName,
-      selectedCustomerID
+      selectedCustomerID,PointsParsent
     ]);
 
     connection.release();
@@ -777,7 +778,6 @@ app.post("/BillSave", async (req, res) => {
     });
   }
 });
-
 
 
 app.post("/Points", async (req, res) => {
@@ -897,7 +897,7 @@ app.get("/getPointsEarned", async (req, res) => {
 app.post("/getEarnedPoints", async (req, res) => {
   console.log("Request body:", req.body);  
 
-  const { fLoginID,Points,fLedgerID } = req.body;
+  const { fLoginID,Points,fLedgerID,Narration } = req.body;
   // Validate required fields
   const requiredFields = [fLoginID];
   if (requiredFields.some(field => field == null)) {
@@ -936,9 +936,9 @@ app.post("/getEarnedPoints", async (req, res) => {
     const BillDate = getIndiaDateTime();
     const connection = await pool.getConnection()
 
-    const sql = "CALL getEarnedPoints(?, ?, ?, ?)";
+    const sql = "CALL getEarnedPoints(?, ?, ?, ?,?)";
     const [results] = await connection.query(sql, [
-      BillDate,Points,fLedgerID,fLoginID,
+      BillDate,Points,fLedgerID,fLoginID,Narration,
     ]);
 
     connection.release();
@@ -2276,6 +2276,51 @@ app.get("/getPurchaseByDate", async (req, res) => {
   }
 });
 
+
+// Fixed backend endpoint
+app.post("/getPurchaseDetails", async (req, res) => {
+  const { p_fProductID, p_fLoginID } = req.body;
+
+  if (!p_fProductID || !p_fLoginID) {
+    return res.status(400).json({ error: "Missing product ID or login ID" });
+  }
+
+  try {
+    // Fixed parameter order to match frontend
+    const [rows] = await pool.query(
+      "CALL getProductPurchaseHistory(?, ?);",
+      [p_fLoginID, p_fProductID,] // Fixed order
+    );
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/getProductBillHistory", async (req, res) => {
+  const { p_fProductID, p_fLoginID } = req.body;
+
+  if (!p_fProductID || !p_fLoginID) {
+    return res.status(400).json({ error: "Missing product ID or login ID" });
+  }
+
+  try {
+    // Fixed parameter order to match frontend
+    const [rows] = await pool.query(
+      "CALL getProductBillHistory(?, ?);",
+      [p_fLoginID, p_fProductID,] // Fixed order
+    );
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 // app.get("/insertPurchaseByDate", async (req, res) => {
 //   try {
 //     const userId = req.query.userId;
@@ -2587,6 +2632,7 @@ app.delete('/deleteledger', async (req, res) => {
     });
   }
 });
+
 
 //updateledgeritems
 // UpdateLedger route
