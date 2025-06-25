@@ -1691,7 +1691,8 @@ app.post("/AdminLogin", async (req, res) => {
     EnableWhatsApp,
     WhatsAppAPI,
     EnablePoints,
-    UPI
+    UPI,
+    Details
   } = req.body;
 console.log("Request body:", req.body);
   // Validate required fields
@@ -1705,7 +1706,7 @@ console.log("Request body:", req.body);
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -1721,7 +1722,8 @@ console.log("Request body:", req.body);
       EnableWhatsApp,
       WhatsAppAPI,
       EnablePoints,
-      UPI
+      UPI,
+      Details
     ]);
 
     connection.release();
@@ -1784,6 +1786,7 @@ app.post("/updateUser", async (req, res) => {
     WhatsAppAPI,
     EnablePoints,
     UPI,
+    Details,
 
   } = req.body;
 
@@ -1798,7 +1801,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -1815,6 +1818,7 @@ app.post("/updateUser", async (req, res) => {
     WhatsAppAPI,
     EnablePoints,
     UPI,
+    Details,
     ];
 
     await connection.query(sql, params);
