@@ -1674,7 +1674,6 @@ app.put("/updateFirm", async (req, res) => {
 
 
 
-
 //admin controller
 app.post("/AdminLogin", async (req, res) => {
   const {
@@ -1692,7 +1691,8 @@ app.post("/AdminLogin", async (req, res) => {
     WhatsAppAPI,
     EnablePoints,
     UPI,
-    Details
+    Details,
+    RateTag
   } = req.body;
 console.log("Request body:", req.body);
   // Validate required fields
@@ -1706,7 +1706,7 @@ console.log("Request body:", req.body);
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -1723,7 +1723,8 @@ console.log("Request body:", req.body);
       WhatsAppAPI,
       EnablePoints,
       UPI,
-      Details
+      Details,
+      RateTag
     ]);
 
     connection.release();
@@ -1741,7 +1742,6 @@ console.log("Request body:", req.body);
     });
   }
 });
-
 
 //admin gets to users
 app.get("/getUser", async (req, res) => {
@@ -1767,7 +1767,6 @@ app.get("/getUser", async (req, res) => {
   }
 });
 
-
 //update Users
 app.post("/updateUser", async (req, res) => {
   const {
@@ -1787,6 +1786,7 @@ app.post("/updateUser", async (req, res) => {
     EnablePoints,
     UPI,
     Details,
+    RateTag
 
   } = req.body;
 
@@ -1801,7 +1801,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -1819,6 +1819,7 @@ app.post("/updateUser", async (req, res) => {
     EnablePoints,
     UPI,
     Details,
+    RateTag
     ];
 
     await connection.query(sql, params);
@@ -1874,7 +1875,50 @@ app.delete('/DeleteUser', async (req, res) => {
 });
 
 
+//getRateTag
+app.get("/getRateTag", async (req, res) => {  
+  const fLoginID = req.query.fLoginID;
+  try {
+    const connection = await pool.getConnection();  
+    const sql = "CALL getRateTag(?)";  // Pass fLoginID to stored procedure
+    const [rows] = await connection.query(sql, [fLoginID]);  // ✅ Pass parameter
+    connection.release();
+    res.status(200).json({
+      success: true,
+      data: rows[0]  // Return first result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve rate tags",
+      error: error.message
+    });
+  }
+});
 
+//GetRatetagStock
+app.get("/getRateTagStock", async (req, res) => {  
+    const fProductID = req.query.fProductID;
+    const fLoginID = req.query.fLoginID;
+  try {
+    const connection = await pool.getConnection();  
+    const sql = "CALL getRateTagStock(?,?)";  // Pass fLoginID to stored procedure
+    const [rows] = await connection.query(sql, [fProductID,fLoginID]);  // ✅ Pass parameter
+    connection.release();
+    res.status(200).json({
+      success: true,
+      data: rows[0]  // Return first result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve rate tags",
+      error: error.message
+    });
+  }
+});
 
 
 
