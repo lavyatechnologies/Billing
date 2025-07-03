@@ -249,7 +249,7 @@ app.post("/productSave", upload.single("image"), async (req, res) => {
       Points,
     } = req.body;
 
-console.log("value",req.body)
+
     // Validate required fields
     if (!productName || !mrp  || !price  ||!FLoginId ) {
       return res.status(400).json({ 
@@ -1625,7 +1625,7 @@ app.get("/allCustomers", async (req, res) => {
 
 
 app.put("/updateFirm", async (req, res) => {
-  const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat,UPI } = req.body;
+  const { LoginID, BusinessName, Address, GSTIN, BillMobile, BillFormat,UPI ,StateCode} = req.body;
 
   if (!LoginID || !BusinessName) {
     return res.status(400).json({ 
@@ -1638,7 +1638,7 @@ app.put("/updateFirm", async (req, res) => {
     const connection = await pool.getConnection();
 
     const [result] = await connection.query(
-      "CALL UpdateFirm(?, ?, ?, ?, ?, ?,?)",
+      "CALL UpdateFirm(?, ?, ?, ?, ?, ?,?,?)",
       [
         LoginID,
         BusinessName,
@@ -1646,7 +1646,8 @@ app.put("/updateFirm", async (req, res) => {
         GSTIN,
         BillMobile,
         BillFormat,
-        UPI
+        UPI,
+        StateCode
       ]
     );
 
@@ -1692,7 +1693,8 @@ app.post("/AdminLogin", async (req, res) => {
     EnablePoints,
     UPI,
     Details,
-    RateTag
+    RateTag,
+    StateCode,
   } = req.body;
 console.log("Request body:", req.body);
   // Validate required fields
@@ -1706,7 +1708,7 @@ console.log("Request body:", req.body);
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -1724,7 +1726,8 @@ console.log("Request body:", req.body);
       EnablePoints,
       UPI,
       Details,
-      RateTag
+      RateTag,
+      StateCode
     ]);
 
     connection.release();
@@ -1786,8 +1789,8 @@ app.post("/updateUser", async (req, res) => {
     EnablePoints,
     UPI,
     Details,
-    RateTag
-
+    RateTag,
+   StateCode
   } = req.body;
 
   // Basic validation
@@ -1801,7 +1804,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -1819,7 +1822,8 @@ app.post("/updateUser", async (req, res) => {
     EnablePoints,
     UPI,
     Details,
-    RateTag
+    RateTag,
+    StateCode
     ];
 
     await connection.query(sql, params);
