@@ -711,8 +711,8 @@ app.post("/BillSave", async (req, res) => {
   let {
     ProductName, MRP, Price, Qty, Total,
     Customer, Phone, fProductID, fLoginID,
-    BillNumber, Tax, Taxable, GSTAmount,
-    StaffName, selectedCustomerID,PointsParsent
+    BillNumber, Tax, Taxable, IGSTAmount,
+    StaffName, selectedCustomerID,PointsParsent,SGST,CGST
   } = req.body;
 
   // Validate required fields
@@ -753,20 +753,20 @@ app.post("/BillSave", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)";
+    const sql = "CALL insertBill(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?)";
 
     const [results] = await connection.query(sql, [
       BillDate, ProductName, MRP, Price, Qty,
       Total, Customer, Phone, fProductID, fLoginID,
-      BillNumber, Tax, Taxable, GSTAmount, StaffName,
-      selectedCustomerID,PointsParsent
+      BillNumber, Tax, Taxable, IGSTAmount, StaffName,
+      selectedCustomerID,PointsParsent,SGST,CGST
     ]);
 
     connection.release();
 
     res.status(201).json({
       success: true,
-      message: "Product data saved successfully"
+      message: "Bill saved successfully"
     });
 
   } catch (error) {
@@ -1618,9 +1618,82 @@ app.get("/allCustomers", async (req, res) => {
 // });
 
 
+app.post('/insertaccount', async (req, res) => {
+  let {
+    fLedgerID,
+    Debit,
+    Credit,
+    Narration,
+    fBillNumber,
+    fLoginID,
+    DateTime,
+  } = req.body;
+  
+console.log(fLedgerID,
+    Debit,
+    Credit,
+    Narration,
+    fBillNumber,
+    fLoginID,
+    DateTime)
+  try {
+    const conn = await pool.getConnection();
+
+    // Convert blank fBillNumber to null
+    if (!fBillNumber || fBillNumber.trim() === '') {
+      fBillNumber = null;
+    }
+
+  const [result] = await conn.query(
+  'CALL InsertAccounts(?, ?, ?, ?, ?, ?, ?)',
+  [fLedgerID, Debit, Credit, Narration, fBillNumber, fLoginID, DateTime]
+);
+
+console.log('Stored Procedure Result:', result);
+
+    conn.release();
+
+ res.status(200).json({
+  success: true, // 👈 ADD THIS
+  message: 'Account inserted successfully.',
+  result: result
+});
+
+  } catch (error) {
+    console.error('Insert error:', error);
+    res.status(500).json({
+      message: 'Failed to insert account.',
+      error: error.message
+    });
+  }
+});
 
 
+app.delete('/deleteaccount', async (req, res) => {
+  const { fBillNumber, fLoginID } = req.body;
 
+  try {
+    const conn = await pool.getConnection();
+
+    const [result] = await conn.query(
+      'CALL DeleteAccounts(?, ?)',
+      [fBillNumber, fLoginID]
+    );
+
+    conn.release();
+
+    res.status(200).json({
+      message: 'Account deleted successfully.',
+      result: result
+    });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({
+      message: 'Failed to delete account.',
+      error: error.message
+    });
+  }
+});
 
 
 
@@ -1671,7 +1744,26 @@ app.put("/updateFirm", async (req, res) => {
 
 
 
-
+app.get("/getBalanceSheet", async (req, res) => {  
+  const fLoginID = req.query.fLoginID;
+  try {
+    const connection = await pool.getConnection();  
+    const sql = "CALL getBalanceSheet(?)";  
+    const [rows] = await connection.query(sql, [fLoginID]); 
+    connection.release();
+    res.status(200).json({
+      success: true,
+      data: rows[0] 
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve BalanceSheet",
+      error: error.message
+    });
+  }
+});
 
 
 
@@ -1695,6 +1787,7 @@ app.post("/AdminLogin", async (req, res) => {
     Details,
     RateTag,
     StateCode,
+    EnableAccounts
   } = req.body;
 console.log("Request body:", req.body);
   // Validate required fields
@@ -1708,7 +1801,7 @@ console.log("Request body:", req.body);
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -1727,7 +1820,8 @@ console.log("Request body:", req.body);
       UPI,
       Details,
       RateTag,
-      StateCode
+      StateCode,
+      EnableAccounts
     ]);
 
     connection.release();
@@ -1790,7 +1884,8 @@ app.post("/updateUser", async (req, res) => {
     UPI,
     Details,
     RateTag,
-   StateCode
+   StateCode,
+     EnableAccounts
   } = req.body;
 
   // Basic validation
@@ -1804,7 +1899,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -1823,7 +1918,8 @@ app.post("/updateUser", async (req, res) => {
     UPI,
     Details,
     RateTag,
-    StateCode
+    StateCode,
+    EnableAccounts
     ];
 
     await connection.query(sql, params);
@@ -2539,7 +2635,7 @@ app.delete('/deletepurchase', async (req, res) => {
 app.post("/insertledger", async (req, res) => {
   console.log("Request body:", req.body);
 
-  const { Name, Mobile, Address, GSTIN, CustomerDetails, fLoginID } = req.body;
+  const { Name, Mobile, Address, GSTIN, CustomerDetails, fLoginID ,StateCode} = req.body;
 
   // Validate required fields
   if (!Name || !Mobile || !fLoginID || !CustomerDetails) {
@@ -2549,7 +2645,7 @@ app.post("/insertledger", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL insertLedger(?, ?, ?, ?, ?, ?)";
+    const sql = "CALL insertLedger(?, ?, ?, ?, ?, ?, ?)";
     const [results] = await connection.query(sql, [
       Name,
       Mobile,
@@ -2557,6 +2653,7 @@ app.post("/insertledger", async (req, res) => {
       GSTIN ,
       fLoginID,
       CustomerDetails,
+      StateCode,
     ]);
 
     connection.release();
@@ -2697,6 +2794,7 @@ app.put('/updateledger', async (req, res) => {
     CustomerDetails,
     LID,
     fLoginID,
+    StateCode
   } = req.body;
 
   console.log(`UpdateLedger request body:`, req.body);
@@ -2709,11 +2807,11 @@ app.put('/updateledger', async (req, res) => {
   }
 
   try {
-    console.log('Calling UpdateLedger with:', [Name, Mobile, Address, GSTIN, LID, fLoginID, CustomerDetails]);
+    console.log('Calling UpdateLedger with:', [Name, Mobile, Address, GSTIN, LID, fLoginID, CustomerDetails,StateCode]);
 
     const [result] = await pool.query(
-      'CALL UpdateLedger(?, ?, ?, ?, ?, ?, ?)',
-      [Name, Mobile, Address, GSTIN, LID, fLoginID, CustomerDetails]
+      'CALL UpdateLedger(?, ?, ?, ?, ?, ?, ?,?)',
+      [Name, Mobile, Address, GSTIN, LID, fLoginID, CustomerDetails, StateCode]
     );
 
     return res.status(200).json({
