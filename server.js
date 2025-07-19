@@ -437,7 +437,7 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ?
-        `${BASE_URL}/uploads/${product.ImageName}` 
+        `https://billing-nku4.onrender.com/uploads/${product.ImageName}` 
         : null
     }));
 
