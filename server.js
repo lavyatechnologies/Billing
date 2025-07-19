@@ -358,6 +358,13 @@ console.log("parms",params)
     });
 
   } catch (error) {
+
+      if (error.code === "ER_DUP_ENTRY") {
+    return res.status(409).json({
+      success: false,
+      message: "Barcode must be unique. This barcode is already in use.",
+    });
+  }
     // Rollback transaction if it exists
     if (connection) {
       try {
@@ -633,6 +640,12 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
       errorStack: error.stack
     });
 
+  if (error.code === "ER_DUP_ENTRY") {
+    return res.status(409).json({
+      success: false,
+      message: "Barcode must be unique. This barcode is already in use.",
+    });
+  }
     // Handle specific database errors
     if (error.sqlMessage) {
       return res.status(500).json({
@@ -1307,61 +1320,121 @@ app.delete('/deleteBill', async (req, res) => {
 //   }
 // });
 
-
 app.get("/getProductByBarCode", async (req, res) => {
   try {
-    const { fLoginID ,BarCode} = req.query;
-    
+    const { fLoginID, BarCode } = req.query;
+
     if (!BarCode || !fLoginID) {
       return res.status(400).json({
         success: false,
-        message: "Missing billNumber or fLoginID parameters"
+        message: "Missing BarCode or fLoginID parameters",
       });
     }
-console.log("relt",req,res)
+
     // Call the stored procedure
     const [results] = await pool.query(
       'CALL getProductByBarCode(?, ?)',
       [fLoginID, BarCode]
     );
 
-    // Process the results from the stored procedure
-    // Assuming the stored procedure returns:
-    // - First result set: Bill header
-    // - Second result set: Bill items
-    // - Third result set: Customer details (if available)
-     const billHeader = results[0]?.[0] || null;
-     const billItems = results[1] || [];
-     const customer = results[2]?.[0] || {};
+    // Extract data from result sets
+    const billHeader = results[0]?.[0] || null;
+    const billItems = results[1] || [];
+    const customer = results[2]?.[0] || {};
 
+    // ❌ If no product found
     if (!billHeader) {
       return res.status(404).json({
         success: false,
-        message: "Barcode is not valid"
+        message: "Barcode is not valid",
       });
     }
 
+    // ✅ Success
     res.json({
       success: true,
       productObj: results,
       items: billItems,
-      customer: customer
+      customer: customer,
     });
 
   } catch (error) {
     console.error("Error fetching Barcode:", {
       errorName: error.name,
       errorMessage: error.message,
-      errorStack: error.stack
+      errorStack: error.stack,
     });
-    
+
     res.status(500).json({
       success: false,
       message: "Server error while fetching Barcode",
-      error: error.message
+      error: error.message,
     });
   }
 });
+
+// app.get("/getProductByBarCode", async (req, res) => {
+//   try {
+//     const { fLoginID ,BarCode} = req.query;
+    
+//     if (!BarCode || !fLoginID) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing billNumber or fLoginID parameters"
+//       });
+//     }
+// if (!billHeader) {
+//   return res.status(404).json({
+//     success: false,
+//     message: "Barcode is not valid"
+//   });
+// }
+
+
+// console.log("relt",req,res)
+//     // Call the stored procedure
+//     const [results] = await pool.query(
+//       'CALL getProductByBarCode(?, ?)',
+//       [fLoginID, BarCode]
+//     );
+
+//     // Process the results from the stored procedure
+//     // Assuming the stored procedure returns:
+//     // - First result set: Bill header
+//     // - Second result set: Bill items
+//     // - Third result set: Customer details (if available)
+//      const billHeader = results[0]?.[0] || null;
+//      const billItems = results[1] || [];
+//      const customer = results[2]?.[0] || {};
+
+//     if (!billHeader) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Barcode is not valid"
+//       });
+//     }
+
+//     res.json({
+//       success: true,
+//       productObj: results,
+//       items: billItems,
+//       customer: customer
+//     });
+
+//   } catch (error) {
+//     console.error("Error fetching Barcode:", {
+//       errorName: error.name,
+//       errorMessage: error.message,
+//       errorStack: error.stack
+//     });
+
+//     res.status(500).json({
+//       success: false,
+//       message: "Server error while fetching Barcode",
+//       error: error.message
+//     });
+//   }
+// });
 // Add this to your server routes
 app.get("/getsBillToBilling", async (req, res) => {
   try {
@@ -2423,6 +2496,51 @@ app.get("/getPurchaseByDate", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch purchase data" });
   }
 });
+
+
+
+app.put('/updatePurchase', async (req, res) => {
+  const {
+    PurchaseDate,
+    fLID,
+    ProductID,
+    QTY,
+    BuyPrice,
+    Description,
+    fLoginID,
+    PID,
+  } = req.body;
+
+  try {
+    const [result] = await pool.query(
+      'CALL UpdatePurchase(?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        PurchaseDate,
+        fLID,
+        ProductID,
+        QTY,
+        BuyPrice,
+        Description,
+        fLoginID,
+        PID,
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Purchase updated successfully',
+      result,
+    });
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update purchase',
+      error: error.message,
+    });
+  }
+});
+
 
 
 // Fixed backend endpoint
