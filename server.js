@@ -10,6 +10,8 @@ const BASE_URL = `https://billing-nku4.onrender.com`;
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
+
 // ✅ Ensure 'uploads' folder exists
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -287,7 +289,8 @@ app.post("/productSave", upload.single("image"), async (req, res) => {
       parseFloat(price), 
       imageName, 
       parseInt(FLoginId),
-     Barcode,
+     Barcode && Barcode.trim() !== "" ? Barcode : null,
+
     Tax,
     Points,
     ];
@@ -437,7 +440,7 @@ app.get("/showproducts", async (req, res) => {
       ...product,
       imageUrl: product.ImageName 
         ?
-        `https://billing-nku4.onrender.com/uploads/${product.ImageName}` 
+        `${BASE_URL}/uploads/${product.ImageName}` 
         : null
     }));
 
@@ -565,45 +568,77 @@ app.delete("/deleteproduct/:id", async (req, res) => {
 // Update Product API
 app.put("/product/:id", upload.single("image"), async (req, res) => {
   try {
-    const {mrp,price, FLoginId,Barcode,Tax,Points } = req.body;
+    const { mrp, price, FLoginId, Barcode, Tax, Points } = req.body;
     const { id } = req.params;
 
+    console.log("Update request body:", req.body);
+    console.log("File uploaded:", req.file ? req.file.filename : "No file");
+
     // Validate required fields
-    if (!mrp  || !price || !FLoginId) {
+    if (!mrp || !price || !FLoginId) {
       return res.status(400).json({
         success: false,
         message: "Missing required product information"
       });
     }
 
-    // Determine image name
-    let imageName = null;
-    if (req.file) {
-      // Use uploaded image
-      imageName = req.file.filename;
-    } else if (req.body.useDefaultImage === "true" && req.body.defaultImageName) {
-      // Use default image
-      imageName = req.body.defaultImageName;
-    } else {
-      // Fetch existing image name if no new image
-      const [existingProduct] = await pool.query(
-        'CALL updateProduct(?)',
-        [id]
-      );
-      imageName = existingProduct[0]?.ImageName || null;
+    // First, get the existing product to retrieve current image name
+    const [existingProductResult] = await pool.query(
+      'SELECT ImageName FROM products WHERE ProductID = ?',
+      [id]
+    );
+
+    let oldImageName = null;
+    if (existingProductResult && existingProductResult.length > 0) {
+      oldImageName = existingProductResult[0].ImageName;
     }
 
-    // Execute the stored procedure - REMOVED productName parameter
+    console.log("Existing image name:", oldImageName);
+
+    // ✅ FIX: Better image handling logic
+    let newImageName = null;
+    let isImageChanging = false;
+    
+    if (req.file) {
+      // New image uploaded
+      newImageName = req.file.filename;
+      isImageChanging = true;
+      console.log("New image uploaded:", newImageName);
+    } else if (req.body.keepExistingImage === "true") {
+      // ✅ NEW: Keep existing image flag
+      newImageName = oldImageName;
+      isImageChanging = false;
+      console.log("Keeping existing image:", newImageName);
+    } else if (req.body.useDefaultImage === "true") {
+      // Use default image
+      newImageName = req.body.defaultImageName || "";
+      isImageChanging = (oldImageName !== newImageName);
+      console.log("Using default image:", newImageName);
+    } else {
+      // Fallback: keep existing image
+      newImageName = oldImageName;
+      isImageChanging = false;
+      console.log("Fallback: keeping existing image:", newImageName);
+    }
+
+    console.log("Final image decision:", {
+      oldImageName,
+      newImageName,
+      isImageChanging
+    });
+
+    console.log("Calling updateProduct with params:", [id, mrp, price, newImageName, FLoginId, Barcode, Tax, Points]);
+
+    // Execute the stored procedure to update product
     const [results] = await pool.query(
-      'CALL updateProduct(?, ?, ?, ?, ?,?,?,?)', 
-      [id, mrp, price, imageName, FLoginId, Barcode, Tax,Points]
+      'CALL updateProduct(?, ?, ?, ?, ?, ?, ?, ?)', 
+      [id, mrp, price, newImageName, FLoginId, Barcode && Barcode.trim() !== "" ? Barcode : null, Tax, Points]
     );
 
     // Process the results
     const processUpdateResults = (results) => {
       console.log("Raw Update Product Results:", JSON.stringify(results, null, 2));
 
-      // Handle different possible result structures
       if (Array.isArray(results) && results[0] && results[0].length > 0) {
         return results[0][0];
       }
@@ -620,14 +655,56 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
     // Check for successful update
     const isSuccessful = 
       (result && result.status === 1) || 
-      (result && result.status === '1')||
+      (result && result.status === '1') ||
       (result && result.affectedRows > 0);
+
     if (isSuccessful) {
+      // Only delete old image if image is actually changing and we have a valid old image
+      if (isImageChanging && oldImageName && oldImageName.trim() !== "" && oldImageName !== newImageName) {
+        const fs = require('fs');
+        const path = require('path');
+        
+        const oldImagePath = path.join(__dirname, 'uploads', oldImageName);
+        
+        // Check if old image file exists and delete it
+        fs.access(oldImagePath, fs.constants.F_OK, (err) => {
+          if (!err) {
+            // File exists, delete it
+            fs.unlink(oldImagePath, (unlinkErr) => {
+              if (unlinkErr) {
+                console.error("Error deleting old image:", unlinkErr);
+              } else {
+                console.log("Old image deleted successfully:", oldImageName);
+              }
+            });
+          } else {
+            console.log("Old image file not found:", oldImagePath);
+          }
+        });
+      } else {
+        console.log("Image not changing, keeping existing image:", oldImageName);
+      }
+
       return res.json({ 
         success: true, 
         message: result.message || "Product updated successfully" 
       });
     } else {
+      // If update failed and a new image was uploaded, delete the new uploaded image
+      if (req.file) {
+        const fs = require('fs');
+        const path = require('path');
+        const newImagePath = path.join(__dirname, 'uploads', req.file.filename);
+        
+        fs.unlink(newImagePath, (unlinkErr) => {
+          if (unlinkErr) {
+            console.error("Error deleting failed upload image:", unlinkErr);
+          } else {
+            console.log("Failed upload image deleted:", req.file.filename);
+          }
+        });
+      }
+
       return res.status(400).json({ 
         success: false, 
         message: result.message || "Product update failed"
@@ -640,12 +717,28 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
       errorStack: error.stack
     });
 
-  if (error.code === "ER_DUP_ENTRY") {
-    return res.status(409).json({
-      success: false,
-      message: "Barcode must be unique. This barcode is already in use.",
-    });
-  }
+    // If there was an error and a new image was uploaded, clean it up
+    if (req.file) {
+      const fs = require('fs');
+      const path = require('path');
+      const newImagePath = path.join(__dirname, 'uploads', req.file.filename);
+      
+      fs.unlink(newImagePath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error("Error deleting error upload image:", unlinkErr);
+        } else {
+          console.log("Error upload image deleted:", req.file.filename);
+        }
+      });
+    }
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+        message: "Barcode must be unique. This barcode is already in use.",
+      });
+    }
+
     // Handle specific database errors
     if (error.sqlMessage) {
       return res.status(500).json({
@@ -663,6 +756,107 @@ app.put("/product/:id", upload.single("image"), async (req, res) => {
     });
   }
 });
+
+// app.put("/product/:id", upload.single("image"), async (req, res) => {
+//   try {
+//     const {mrp,price, FLoginId,Barcode,Tax,Points } = req.body;
+//     const { id } = req.params;
+
+//     // Validate required fields
+//     if (!mrp  || !price || !FLoginId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Missing required product information"
+//       });
+//     }
+
+//     // Determine image name
+//     let imageName = null;
+//     if (req.file) {
+//       // Use uploaded image
+//       imageName = req.file.filename;
+//     } else if (req.body.useDefaultImage === "true" && req.body.defaultImageName) {
+//       // Use default image
+//       imageName = req.body.defaultImageName;
+//     } else {
+//       // Fetch existing image name if no new image
+//       const [existingProduct] = await pool.query(
+//         'CALL updateProduct(?)',
+//         [id]
+//       );
+//       imageName = existingProduct[0]?.ImageName || null;
+//     }
+
+//     // Execute the stored procedure - REMOVED productName parameter
+//     const [results] = await pool.query(
+//       'CALL updateProduct(?, ?, ?, ?, ?,?,?,?)', 
+//       [id, mrp, price, imageName, FLoginId, Barcode, Tax,Points]
+//     );
+
+//     // Process the results
+//     const processUpdateResults = (results) => {
+//       console.log("Raw Update Product Results:", JSON.stringify(results, null, 2));
+
+//       // Handle different possible result structures
+//       if (Array.isArray(results) && results[0] && results[0].length > 0) {
+//         return results[0][0];
+//       }
+      
+//       if (results[0]) {
+//         return results[0];
+//       }
+      
+//       return results;
+//     };
+
+//     const result = processUpdateResults(results);
+
+//     // Check for successful update
+//     const isSuccessful = 
+//       (result && result.status === 1) || 
+//       (result && result.status === '1')||
+//       (result && result.affectedRows > 0);
+//     if (isSuccessful) {
+//       return res.json({ 
+//         success: true, 
+//         message: result.message || "Product updated successfully" 
+//       });
+//     } else {
+//       return res.status(400).json({ 
+//         success: false, 
+//         message: result.message || "Product update failed"
+//       });
+//     }
+//   } catch (error) {
+//     console.error("❌ Error updating product:", {
+//       errorName: error.name,
+//       errorMessage: error.message,
+//       errorStack: error.stack
+//     });
+
+//   if (error.code === "ER_DUP_ENTRY") {
+//     return res.status(409).json({
+//       success: false,
+//       message: "Barcode must be unique. This barcode is already in use.",
+//     });
+//   }
+//     // Handle specific database errors
+//     if (error.sqlMessage) {
+//       return res.status(500).json({
+//         success: false,
+//         message: "Database error occurred",
+//         sqlError: error.sqlMessage
+//       });
+//     }
+
+//     // Generic server error
+//     return res.status(500).json({ 
+//       success: false, 
+//       message: "Internal server error during product update",
+//       errorDetails: error.toString()
+//     });
+//   }
+// });
 
 
 // app.get("/product", async (req, res) => {
@@ -1565,6 +1759,30 @@ app.get("/getsBillToBilling", async (req, res) => {
 //     });
 //   }
 // });
+app.get("/getAccountsHistory", async (req, res) => {
+  try {
+    const fLoginID = req.query.fLoginID;
+    const fromDate = req.query.fromDate || null;
+    const toDate = req.query.toDate || null;
+
+    console.log("📥 Fetching accounts with:", { fLoginID, fromDate, toDate });
+
+    const query = "CALL getAccountsHistory(?, ?, ?)";
+    const params = [fLoginID || null, fromDate, toDate];
+
+    const [results] = await pool.query(query, params);
+    const accountsData = results[0]; // First array contains result set
+
+    res.json(accountsData);
+  } catch (error) {
+    console.error("❌ Error fetching Accounts History:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error while fetching Accounts History",
+      error: error.message 
+    });
+  }
+});
 
 
 app.get("/getsolidItems", async (req, res) => {
@@ -1815,7 +2033,26 @@ app.put("/updateFirm", async (req, res) => {
   }
 });
 
-
+app.get("/getAllLedgerName", async (req, res) => {  
+  const fLoginID = req.query.fLoginID;
+  try {
+    const connection = await pool.getConnection();  
+    const sql = "CALL getAllLedgerName(?)";  
+    const [rows] = await connection.query(sql, [fLoginID]); 
+    connection.release();
+    res.status(200).json({
+      success: true,
+      data: rows[0] 
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve Ledger Names",
+      error: error.message
+    });
+  }
+});
 
 app.get("/getBalanceSheet", async (req, res) => {  
   const fLoginID = req.query.fLoginID;
@@ -2963,6 +3200,25 @@ app.get('/getpartylist', async (req, res) => {
   }
 });
 
+//ledgersummary
+app.get("/getLedgerSummary", async (req, res) => {
+  const { fLoginID, LID, fromDate, toDate } = req.query;
+
+  if (!fLoginID || !LID || !fromDate || !toDate) {
+    return res.status(400).json({ success: false, message: "Missing parameters" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      "CALL getLedgerSummary(?, ?, ?, ?)",
+      [fLoginID, LID, fromDate, toDate]
+    );
+    return res.json(rows[0]);
+  } catch (err) {
+    console.error("❌ Error fetching ledger summary:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 
 
 //GO to ledger and Bill Name dropdown Customer
