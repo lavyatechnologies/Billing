@@ -21,7 +21,10 @@ const PORT = process.env.PORT || 5000;
 
 
 // ✅ Ensure 'uploads' folder exists
+
+
 const uploadDir = path.join(__dirname, "uploads");
+
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -30,6 +33,8 @@ if (!fs.existsSync(uploadDir)) {
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// app.use("/Imageuploads", express.static(uploadDir));
 
 app.use("/uploads", express.static("uploads")); // Serve uploaded images
 
@@ -110,6 +115,7 @@ app.post('/upload-image', uploadImage.single('image'), (req, res) => {
     const newFilePath = path.join(uploadDir, newFilename);
 
     fs.renameSync(req.file.path, newFilePath);
+// const fileUrl = `https://cranky-davinci.216-10-253-21.plesk.page/Imageuploads/${newFilename}`;
 
     const fileUrl = `/uploads/${newFilename}`;
     res.status(200).json({
