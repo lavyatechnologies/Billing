@@ -7,9 +7,17 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const BASE_URL = `https://billing-nku4.onrender.com`;
+const BASE_Local = `http://localhost:5000`;
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
+// app.use((req, res, next) => {
+//   res.header('Access-Control-Allow-Origin', '*');
+//   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
+//   res.header('Access-Control-Allow-Headers', 'Content-Type');
+//   next();
+// });
 
 
 // ✅ Ensure 'uploads' folder exists
