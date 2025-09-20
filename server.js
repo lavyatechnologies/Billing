@@ -438,8 +438,6 @@ app.post("/productSave", upload.single("image"), async (req, res) => {
 app.get("/showproducts", async (req, res) => {
   try {
     const userId = req.query.userId;
-    // console.log("User ID:", userId);
-
     // Stored procedure call
     let query = "CALL selectProduct(?)";
 
@@ -460,7 +458,7 @@ app.get("/showproducts", async (req, res) => {
     console.error("❌ Error fetching products:", error);
     res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error,Try again, Please refresh",
       error: error.message,
     });
   }
@@ -2313,6 +2311,7 @@ app.post("/AdminLogin", async (req, res) => {
     RateTag,
     StateCode,
     EnableAccounts,
+    OnlyRateTag,
   } = req.body;
   console.log("Request body:", req.body);
   // Validate required fields
@@ -2326,7 +2325,7 @@ app.post("/AdminLogin", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -2347,6 +2346,7 @@ app.post("/AdminLogin", async (req, res) => {
       RateTag,
       StateCode,
       EnableAccounts,
+      OnlyRateTag,
     ]);
 
     connection.release();
@@ -2411,6 +2411,7 @@ app.post("/updateUser", async (req, res) => {
     RateTag,
     StateCode,
     EnableAccounts,
+    OnlyRateTag,
   } = req.body;
 
   // Basic validation
@@ -2425,7 +2426,7 @@ app.post("/updateUser", async (req, res) => {
     const connection = await pool.getConnection();
 
     const sql =
-      "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?)";
+      "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -2446,6 +2447,7 @@ app.post("/updateUser", async (req, res) => {
       RateTag,
       StateCode,
       EnableAccounts,
+      OnlyRateTag,
     ];
 
     await connection.query(sql, params);
@@ -3529,7 +3531,7 @@ app.get("/getpartylist", async (req, res) => {
     return res.json(rows[0]); // MySQL stored procedures return an array of results
   } catch (err) {
     console.error("❌ Error fetching party list:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error,Try again, Please refresh" });
   }
 });
 
@@ -3553,7 +3555,7 @@ app.get("/getLedgerSummary", async (req, res) => {
     return res.json(rows[0]);
   } catch (err) {
     console.error("❌ Error fetching ledger summary:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error,Try again, Please refresh" });
   }
 });
 
@@ -3572,7 +3574,7 @@ app.get("/getCustomerlist", async (req, res) => {
     return res.json(rows[0]); // MySQL stored procedures return an array of results
   } catch (err) {
     console.error("❌ Error fetching Customer list:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: "Server error Try again, Please refresh" });
   }
 });
 
