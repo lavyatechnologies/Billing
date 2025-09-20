@@ -2357,6 +2357,13 @@ app.post("/AdminLogin", async (req, res) => {
     });
   } catch (error) {
     console.error("Database error:", error);
+    
+        if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+        message: "Phone number already exists for another user. Please use a different number.",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Failed to create account",
@@ -2414,19 +2421,14 @@ app.post("/updateUser", async (req, res) => {
     OnlyRateTag,
   } = req.body;
 
-  // Basic validation
   if (!LoginID) {
-    return res.status(400).json({
-      success: false,
-      message: "LoginID is required",
-    });
+    return res.status(400).json({ success: false, message: "LoginID is required" });
   }
 
   try {
     const connection = await pool.getConnection();
 
-    const sql =
-      "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     const params = [
       LoginID,
       businessName,
@@ -2453,12 +2455,19 @@ app.post("/updateUser", async (req, res) => {
     await connection.query(sql, params);
     connection.release();
 
-    res.status(200).json({
-      success: true,
-      message: "User updated successfully",
-    });
+    res.status(200).json({ success: true, message: "User updated successfully" });
   } catch (error) {
     console.error("Database error:", error);
+
+    // Duplicate phone number
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        success: false,
+        message: "Phone number already exists for another user. Please use a different number.",
+      });
+    }
+
+    // Generic DB error
     res.status(500).json({
       success: false,
       message: "Failed to update user",
@@ -3798,3 +3807,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
