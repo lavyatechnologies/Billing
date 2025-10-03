@@ -554,7 +554,7 @@ app.delete("/deleteproduct/:id", async (req, res) => {
       // Send custom error message for foreign key constraint
       return res.status(409).json({
         success: false,
-        message: "This product is used in a bill and cannot be deleted.",
+        message: "This product is used in Sale/Purchase records and cannot be deleted.",
       });
     }
 
@@ -2476,6 +2476,7 @@ app.post("/updateUser", async (req, res) => {
   }
 });
 
+
 // DELETE endpoint to call DeleteUser stored procedure
 app.delete("/DeleteUser", async (req, res) => {
   try {
@@ -2538,7 +2539,7 @@ app.get("/getRateTagStock", async (req, res) => {
   const fLoginID = req.query.fLoginID;
   try {
     const connection = await pool.getConnection();
-    const sql = "CALL getRateTagStock(?,?)"; // Pass fLoginID to stored procedure
+    const sql = "CALL getRateTagStock(?,?)"; 
     const [rows] = await connection.query(sql, [fProductID, fLoginID]); // ✅ Pass parameter
     connection.release();
     res.status(200).json({
@@ -2554,6 +2555,30 @@ app.get("/getRateTagStock", async (req, res) => {
     });
   }
 });
+
+app.get("/getBarcodeRateTag", async (req, res) => {
+  const Barcode = req.query.Barcode;
+  const fLoginID = req.query.fLoginID;
+  try {
+    const connection = await pool.getConnection();
+    const sql = "CALL getBarcodetoRateTag(?,?)"; 
+    const [rows] = await connection.query(sql, [fLoginID,Barcode]); // ✅ Pass parameter
+    connection.release();
+    res.status(200).json({
+      success: true,
+      data: rows[0], // Return first result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve rate tags",
+      error: error.message,
+    });
+  }
+});
+
+
 
 app.post("/signup", async (req, res) => {
   const {
@@ -3807,4 +3832,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
