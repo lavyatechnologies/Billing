@@ -2557,17 +2557,37 @@ app.get("/getRateTagStock", async (req, res) => {
 });
 
 app.get("/getBarcodeRateTag", async (req, res) => {
-  const Barcode = req.query.Barcode;
-  const fLoginID = req.query.fLoginID;
+  const { Barcode, fLoginID } = req.query;
+
   try {
     const connection = await pool.getConnection();
-    const sql = "CALL getBarcodetoRateTag(?,?)"; 
-    const [rows] = await connection.query(sql, [fLoginID,Barcode]); // ✅ Pass parameter
+    const [rows] = await connection.query("CALL getBarcodetoRateTag(?, ?)", [fLoginID, Barcode]);
     connection.release();
-    res.status(200).json({
-      success: true,
-      data: rows[0], // Return first result set
+
+    const result = rows[0];
+
+    // ✅ If stored procedure returned error message
+    if (result.length === 1 && result[0].status === "Error") {
+      return res.status(200).json({
+        success: false,
+        message: result[0].message,
+      });
+    }
+
+    // ✅ If data found
+    if (result && result.length > 0) {
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    // ✅ No data found
+    return res.status(200).json({
+      success: false,
+      message: "No data found for this barcode.",
     });
+
   } catch (error) {
     console.error("Database error:", error);
     res.status(500).json({
@@ -2577,7 +2597,6 @@ app.get("/getBarcodeRateTag", async (req, res) => {
     });
   }
 });
-
 
 
 app.post("/signup", async (req, res) => {
@@ -3832,3 +3851,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
