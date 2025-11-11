@@ -102,6 +102,11 @@ app.get("/getorderHistory", async (req, res) => {
   }
 });
 
+
+
+
+
+
 const uploadDir = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(uploadDir)) {
@@ -310,6 +315,28 @@ app.use((error, req, res, next) => {
 
 
 
+app.get("/api/getUserValidity/:fLoginID", async (req, res) => {
+  const fLoginID = req.params.fLoginID; // ✅ use params instead of query
+
+  try {
+    const connection = await pool.getConnection();
+    const sql = "CALL sp_GetUserValidityByLoginID(?)";
+    const [rows] = await connection.query(sql, [fLoginID]);
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      data: rows[0][0], // ✅ usually need rows[0][0] for stored procedure result
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve validity date",
+      error: error.message,
+    });
+  }
+});
 
 
 
