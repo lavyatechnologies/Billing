@@ -10,15 +10,97 @@ const BASE_URL = `https://billing-nku4.onrender.com`;
 const BASE_Local = `http://localhost:5000`;
 const app = express();
 const PORT = process.env.PORT || 5000;
+const Razorpay = require("razorpay");
 
+app.use(cors());
+app.use(express.json());
 // app.use((req, res, next) => {
 //   res.header('Access-Control-Allow-Origin', '*');
 //   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE');
 //   res.header('Access-Control-Allow-Headers', 'Content-Type');
 //   next();
 // });
+//razorpay
+const instance = new Razorpay({
+  key_id: "rzp_test_RZa5NEeFkZpL4v",
+  key_secret: "1K2HFkgh6S5w62GiO6k0tuhM",
+});
 
-// ✅ Ensure 'uploads' folder exists
+// 🧾 Step 1: Create Order API
+app.post("/create-order", async (req, res) => {
+  const { amount, currency, receipt, fLoginID } = req.body;
+console.log(amount, currency, receipt, fLoginID ,"createorder");
+  try {
+    const options = {
+      amount: amount * 100, // Amount in paise
+      currency: currency || "INR",
+      receipt: receipt || `receipt_${Date.now()}`,
+      notes: { fLoginID }, // Save user id for reference
+    };
+
+    const order = await instance.orders.create(options);
+    res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ✅ Step 2: Payment Verification (optional)
+app.post("/verify-payment", async (req, res) => {
+  const crypto = require("crypto");
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, amount,values } =
+    req.body;
+
+  const key_secret = "1K2HFkgh6S5w62GiO6k0tuhM";
+
+  try {
+    // Step 1️⃣ – Verify Razorpay signature
+    const hmac = crypto
+      .createHmac("sha256", key_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest("hex");
+      const finalAmount = amount / 100;
+      console.log(values,finalAmount,"finalAmountvalueAmount");
+    if (hmac === razorpay_signature && finalAmount == values) {
+      const finalAmount = amount / 100; // Convert paise → ₹
+
+      // Step 2️⃣ – Insert into MySQL using your stored procedure
+      const [result] = await pool.query(
+        "CALL insertAmountOrderHistory(?, ?, ?, ?, ?)",
+        [razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, finalAmount]
+      );
+
+      console.log("✅ Payment Inserted:", result);
+
+      // Step 3️⃣ – Respond to frontend
+      res.json({
+        success: true,
+        message: "✅ Payment verified & saved successfully",
+        fLoginID,
+        amount: finalAmount,
+      });
+    } else {
+      res.json({ success: false, message: "❌ Payment verification failed" });
+    }
+  } catch (error) {
+    console.error("💥 Error verifying payment:", error);
+    res.status(500).json({ success: false, message: "Server error: " + error.message });
+  }
+});
+app.get("/getorderHistory", async (req, res) => {
+  try {
+    const [rows] = await pool.query("CALL 	getOrderHistory()"); // using your admin procedure
+
+    res.json({
+      success: true,
+      message: "Order fetched successfully",
+      data: rows[0] || [], // ✅ extract first result set
+    });
+  } catch (error) {
+    console.error("Error fetching order:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch order" });
+  }
+});
 
 const uploadDir = path.join(__dirname, "uploads");
 
@@ -224,6 +306,15 @@ app.use((error, req, res, next) => {
     error: error.message,
   });
 });
+
+
+
+
+
+
+
+
+
 
 // Check Database Connection
 (async () => {
@@ -1045,6 +1136,7 @@ app.post("/BillSave", async (req, res) => {
   console.log("Request body:", req.body);
 
   let {
+    BillDate,
     ProductName,
     MRP,
     Price,
@@ -1088,29 +1180,29 @@ app.post("/BillSave", async (req, res) => {
   }
 
   // 🕓 Get current date & time in India format
-  const getIndiaDateTime = () => {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat("en-IN", {
-      timeZone: "Asia/Kolkata",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(now);
-    return `${parts.find((p) => p.type === "year").value}-${
-      parts.find((p) => p.type === "month").value
-    }-${parts.find((p) => p.type === "day").value} ${
-      parts.find((p) => p.type === "hour").value
-    }:${parts.find((p) => p.type === "minute").value}:${
-      parts.find((p) => p.type === "second").value
-    }`;
-  };
+  // const getIndiaDateTime = () => {
+  //   const now = new Date();
+  //   const formatter = new Intl.DateTimeFormat("en-IN", {
+  //     timeZone: "Asia/Kolkata",
+  //     year: "numeric",
+  //     month: "2-digit",
+  //     day: "2-digit",
+  //     hour: "2-digit",
+  //     minute: "2-digit",
+  //     second: "2-digit",
+  //     hour12: false,
+  //   });
+  //   const parts = formatter.formatToParts(now);
+  //   return `${parts.find((p) => p.type === "year").value}-${
+  //     parts.find((p) => p.type === "month").value
+  //   }-${parts.find((p) => p.type === "day").value} ${
+  //     parts.find((p) => p.type === "hour").value
+  //   }:${parts.find((p) => p.type === "minute").value}:${
+  //     parts.find((p) => p.type === "second").value
+  //   }`;
+  // };
 
-  const BillDate = getIndiaDateTime();
+  // const BillDate = getIndiaDateTime();
 
   try {
     const connection = await pool.getConnection();
@@ -1663,7 +1755,7 @@ app.delete("/deleteBill", async (req, res) => {
     });
   }
 });
-
+  
 // app.delete('/deleteBillItems', async (req, res) => {
 //   try {
 //     const { fLoginID, BillNumber } = req.body;
@@ -2205,6 +2297,11 @@ app.put("/updateFirm", async (req, res) => {
     BillFormat,
     UPI,
     StateCode,
+    TermsORConditions,
+    BankName,
+    Branch,
+    AccountNumber,
+    IFSCCode,
   } = req.body;
 
   if (!LoginID || !BusinessName) {
@@ -2218,7 +2315,7 @@ app.put("/updateFirm", async (req, res) => {
     const connection = await pool.getConnection();
 
     const [result] = await connection.query(
-      "CALL UpdateFirm(?, ?, ?, ?, ?, ?,?,?)",
+      "CALL UpdateFirm(?, ?, ?, ?, ?, ?,?,?,?, ?, ?, ?, ?)",
       [
         LoginID,
         BusinessName,
@@ -2228,6 +2325,11 @@ app.put("/updateFirm", async (req, res) => {
         BillFormat,
         UPI,
         StateCode,
+        TermsORConditions,
+        BankName,
+        Branch,
+        AccountNumber,
+        IFSCCode,
       ]
     );
 
@@ -2312,6 +2414,10 @@ app.post("/AdminLogin", async (req, res) => {
     StateCode,
     EnableAccounts,
     OnlyRateTag,
+    BankName,
+    Branch,
+    AccountNumber,
+    IFSCCode,
   } = req.body;
   console.log("Request body:", req.body);
   // Validate required fields
@@ -2325,7 +2431,7 @@ app.post("/AdminLogin", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -2347,6 +2453,10 @@ app.post("/AdminLogin", async (req, res) => {
       StateCode,
       EnableAccounts,
       OnlyRateTag,
+      BankName,
+      Branch,
+      AccountNumber,
+      IFSCCode,
     ]);
 
     connection.release();
@@ -2419,6 +2529,10 @@ app.post("/updateUser", async (req, res) => {
     StateCode,
     EnableAccounts,
     OnlyRateTag,
+    BankName,
+    Branch,
+    AccountNumber,
+    IFSCCode,
   } = req.body;
 
   if (!LoginID) {
@@ -2428,7 +2542,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     const params = [
       LoginID,
       businessName,
@@ -2450,6 +2564,10 @@ app.post("/updateUser", async (req, res) => {
       StateCode,
       EnableAccounts,
       OnlyRateTag,
+      BankName,
+      Branch,
+      AccountNumber,
+      IFSCCode,
     ];
 
     await connection.query(sql, params);
@@ -2476,6 +2594,39 @@ app.post("/updateUser", async (req, res) => {
   }
 });
 
+//GetBillTaxSummary
+app.post("/api/getBillTaxSummary", async (req, res) => {
+  const { fLoginID, BillNumber } = req.body;
+
+  console.log("🔹 Params:", fLoginID, BillNumber);
+
+  try {
+    const conn = await pool.getConnection();
+
+    const [rows] = await conn.query(
+      "CALL GetBillTaxSummary(?, ?)",
+      [fLoginID, BillNumber]
+    );
+
+    conn.release();
+
+    // MySQL stored procedure returns [ [data], [meta] ]
+    const taxSummary = rows[0] || [];
+
+    res.status(200).json({
+      success: true,
+      message: "Tax summary fetched successfully.",
+      data: taxSummary,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching tax summary:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch tax summary.",
+      error: error.message,
+    });
+  }
+});
 
 // DELETE endpoint to call DeleteUser stored procedure
 app.delete("/DeleteUser", async (req, res) => {
@@ -2597,6 +2748,9 @@ app.get("/getBarcodeRateTag", async (req, res) => {
     });
   }
 });
+
+
+
 
 
 app.post("/signup", async (req, res) => {
@@ -3851,4 +4005,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
