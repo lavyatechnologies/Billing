@@ -27,31 +27,58 @@ const instance = new Razorpay({
 });
 
 // 🧾 Step 1: Create Order API
+// app.post("/create-order", async (req, res) => {
+//   const { amount, currency, receipt, fLoginID } = req.body;
+// console.log(amount, currency, receipt, fLoginID ,"createorder");
+//   try {
+//     const options = {
+//       amount: amount * 100, // Amount in paise
+//       currency: currency || "INR",
+//       receipt: receipt || `receipt_${Date.now()}`,
+//       notes: { fLoginID }, // Save user id for reference
+//     };
+
+//     const order = await instance.orders.create(options);
+//     console.log(order,"list Orders")
+//     res.json({ success: true, order });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// });
 app.post("/create-order", async (req, res) => {
-  const { amount, currency, receipt, fLoginID } = req.body;
-console.log(amount, currency, receipt, fLoginID ,"createorder");
+  const { amount, currency, receipt, fLoginID, key_id, key_secret } = req.body;
+  console.log(amount, currency, receipt, fLoginID, key_id, "create-order");
+
   try {
+    // ✅ Use dynamic keys from frontend
+    const instance = new Razorpay({
+      key_id,
+      key_secret,
+    });
+
     const options = {
-      amount: amount * 100, // Amount in paise
+      amount: amount * 100, // convert to paise
       currency: currency || "INR",
       receipt: receipt || `receipt_${Date.now()}`,
-      notes: { fLoginID }, // Save user id for reference
+      notes: { fLoginID },
     };
 
     const order = await instance.orders.create(options);
+    console.log(order, "📦 Order Created");
+
     res.json({ success: true, order });
   } catch (error) {
+    console.error("❌ Error creating order:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // ✅ Step 2: Payment Verification (optional)
 app.post("/verify-payment", async (req, res) => {
   const crypto = require("crypto");
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, amount,values } =
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, amount,values,Months,key_secret } =
     req.body;
-
-  const key_secret = "1K2HFkgh6S5w62GiO6k0tuhM";
+console.log(Months,"monthestotal")
+  // const key_secret = "1K2HFkgh6S5w62GiO6k0tuhM";
 
   try {
     // Step 1️⃣ – Verify Razorpay signature
@@ -66,8 +93,8 @@ app.post("/verify-payment", async (req, res) => {
 
       // Step 2️⃣ – Insert into MySQL using your stored procedure
       const [result] = await pool.query(
-        "CALL insertAmountOrderHistory(?, ?, ?, ?, ?)",
-        [razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, finalAmount]
+        "CALL insertAmountOrderHistory(?, ?, ?, ?, ?,?)",
+        [razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, finalAmount,Months]
       );
 
       console.log("✅ Payment Inserted:", result);
@@ -87,6 +114,9 @@ app.post("/verify-payment", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error: " + error.message });
   }
 });
+
+
+
 app.get("/getorderHistory", async (req, res) => {
   try {
     const [rows] = await pool.query("CALL 	getOrderHistory()"); // using your admin procedure
@@ -2445,6 +2475,8 @@ app.post("/AdminLogin", async (req, res) => {
     Branch,
     AccountNumber,
     IFSCCode,
+    PlanMonths,
+    RenewCost,
   } = req.body;
   console.log("Request body:", req.body);
   // Validate required fields
@@ -2458,7 +2490,7 @@ app.post("/AdminLogin", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    const sql = "CALL Admin(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     const [rows] = await connection.query(sql, [
       businessName,
@@ -2484,6 +2516,8 @@ app.post("/AdminLogin", async (req, res) => {
       Branch,
       AccountNumber,
       IFSCCode,
+      PlanMonths,
+      RenewCost,
     ]);
 
     connection.release();
@@ -2560,6 +2594,8 @@ app.post("/updateUser", async (req, res) => {
     Branch,
     AccountNumber,
     IFSCCode,
+    PlanMonths,
+    RenewCost
   } = req.body;
 
   if (!LoginID) {
@@ -2569,7 +2605,7 @@ app.post("/updateUser", async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    const sql = "CALL UpdateUsers(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)";
     const params = [
       LoginID,
       businessName,
@@ -2595,6 +2631,8 @@ app.post("/updateUser", async (req, res) => {
       Branch,
       AccountNumber,
       IFSCCode,
+       PlanMonths,
+    RenewCost
     ];
 
     await connection.query(sql, params);
@@ -2688,6 +2726,68 @@ app.delete("/DeleteUser", async (req, res) => {
     });
   }
 });
+
+
+//getgetConfiguration
+app.get("/getConfiguration", async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL getConfiguration()";
+    const [rows] = await connection.query(sql); // No parameters passed
+
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      data: rows[0], // rows[0] contains the result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve logins",
+      error: error.message,
+    });
+  }
+});
+
+//updateConfiguration
+app.post("/updateConfiguration", async (req, res) => {
+  const { key_id, key_secret, PlanMonths, RenewCost } = req.body;
+
+  // 🧩 Validation
+  if (!key_id || !key_secret || !PlanMonths || !RenewCost) {
+    return res.status(400).json({
+      success: false,
+      message: "All fields (key_id, key_secret, PlanMonths, RenewCost) are required",
+    });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL updateConfiguration(?, ?, ?, ?)";
+    const params = [key_id, key_secret, PlanMonths, RenewCost];
+
+    await connection.query(sql, params);
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      message: "Configuration updated successfully ✅",
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update configuration",
+      error: error.message,
+    });
+  }
+});
+
 
 //getRateTag
 app.get("/getRateTag", async (req, res) => {
